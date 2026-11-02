@@ -1,0 +1,16 @@
+[project]
+name = "trail-mania"
+version = "1.0.0"
+requires-python = ">=3.14"
+dependencies = [
+    "flet>=1.0.5",
+]
+path = "src"
+module = "main"
+
+[dependency-groups]
+dev = [
+    "flet-cli>=1.0.5",
+    "flet-desktop>=1.0.5",
+    "flet-web>=1.0.5",
+]

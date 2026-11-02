@@ -1,0 +1,25 @@
+# Local Python environment
+.venv/
+
+# Python caches and compiled files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local Flet data and temporary files
+.flet/
+
+# Local PyCharm configuration
+.idea/
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Generated build files
+build/
+dist/
+*.egg-info/
