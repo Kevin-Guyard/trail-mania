@@ -1,6 +1,7 @@
 import flet as ft
 from typing import List
 
+from trail_mania.database import initialize_database
 from trail_mania.views import AddSessionView, CalendarView, SessionsView, StatisticsView
 
 
@@ -19,6 +20,8 @@ def change_page(
 def create_app(
         page: ft.Page
 ) -> None:
+    initialize_database()
+
     page.title = "Trail Mania"
     page.padding = 0
     page.bgcolor = "#F5F5F5"
