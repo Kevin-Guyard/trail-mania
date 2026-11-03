@@ -72,7 +72,7 @@ def build_month_cell(
         padding=ft.Padding.only(bottom=2) if is_today else 0,
         content=_build_date_text(str(day.day), is_today=is_today, muted=not in_month),
     )
-    return _build_day_cell(day, label, session_types=session_types)
+    return _build_day_cell(day, label, session_types=session_types, muted=not in_month)
 
 
 def build_week_cell(
@@ -166,6 +166,7 @@ def _build_day_cell(
     *,
     session_types: Sequence[SessionType] = (),
     session_labels: Sequence[str] = (),
+    muted: bool = False,
 ) -> ft.Container:
     """Compose the shared background, labels, border, and full-date tooltip.
 
@@ -177,12 +178,14 @@ def _build_day_cell(
         Positioned date label or badge.
     weekday_label : ft.Container or None, optional
         Positioned weekday label for the weekly layout. Defaults to None.
+    muted : bool, optional
+        Whether to use a gray border for an adjacent-month date. Defaults to False.
 
     Returns
     -------
     ft.Container
         An expanding rounded cell with session colors below the labels
-        and a black foreground border. Empty days remain white.
+        and a black or muted gray foreground border. Empty days remain white.
     """
     bands: list[ft.Control] = []
     def session_label(index: int) -> ft.Container | None:
@@ -223,7 +226,7 @@ def _build_day_cell(
         padding=1,
         # Draw the border above the background, including at rounded corners.
         foreground_decoration=ft.BoxDecoration(
-            border=ft.Border.all(1, ft.Colors.BLACK),
+            border=ft.Border.all(1, ft.Colors.GREY_400 if muted else ft.Colors.BLACK),
             border_radius=ft.BorderRadius.all(12),
         ),
         tooltip=f"{day.day:02d}/{day.month:02d}/{day.year}",
