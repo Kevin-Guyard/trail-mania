@@ -399,16 +399,18 @@ class TemperatureInput(NumericInput):
 
 @ft.control
 class RPEInput(NumericInput):
-    """Collect a nonnegative rating of perceived exertion.
+    """Collect a rating of perceived exertion between 0.5 and 10.0.
 
     Notes
     -----
-    Uses half-point steps and one decimal place. The control imposes no
-    upper bound; requiredness is determined by the repository schema.
+    Uses half-point steps and one decimal place with inclusive bounds.
+    Requiredness is determined by the repository schema.
     """
 
     label: str = "RPE"
     step: Decimal = field(default=Decimal("0.5"), metadata={"skip": True})
+    minimum: Decimal | None = field(default=Decimal("0.5"), metadata={"skip": True})
+    maximum: Decimal | None = field(default=Decimal("10.0"), metadata={"skip": True})
 
 
 @ft.control

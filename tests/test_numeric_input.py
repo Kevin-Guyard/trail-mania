@@ -74,7 +74,7 @@ class NumericInputTest(unittest.TestCase):
         for cls in (DistanceInput, DurationInput, SpeedInput, RPEInput, ElevationInput, HeartRateInput):
             component = cls()
             self.click(component, -1)
-            self.assertEqual(component.value, Decimal("0"))
+            self.assertEqual(component.value, component.minimum)
             self.enter(component, "-1")
             self.assertIsNone(component.value)
             self.assertIsNotNone(component._field.error)
