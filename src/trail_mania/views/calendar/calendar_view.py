@@ -5,6 +5,7 @@ from typing import Final, Self
 
 import flet as ft
 
+from trail_mania.session_repository import get_calendar_sessions_by_date, get_session_types_by_date
 from trail_mania.views.calendar._calendar_cells import (
     CELL_SPACING,
     WEEKDAY_NAMES,
@@ -59,6 +60,7 @@ class CalendarView(ft.Container):
         week_year, week, _ = today.isocalendar()
         self.selected_week: Period = (week_year, week)
         self._pager: CalendarPager | None = None
+        self._mode = "month"
 
         self._period_content: ft.Container = ft.Container(
             expand=True,
@@ -288,13 +290,17 @@ class CalendarView(ft.Container):
             Unused week slots remain transparent below the grid.
         """
         weeks = Calendar(firstweekday=MONDAY).monthdatescalendar(*period)
+        sessions = get_session_types_by_date(weeks[0][0], weeks[-1][-1])
         today = date.today()
         rows: list[ft.Control] = [
             ft.Row(
                 expand=True,
                 spacing=CELL_SPACING,
                 vertical_alignment=ft.CrossAxisAlignment.STRETCH,
-                controls=[build_month_cell(day, today, period) for day in week],
+                controls=[
+                    build_month_cell(day, today, period, sessions.get(day, ()))
+                    for day in week
+                ],
             )
             for week in weeks
         ]
@@ -350,13 +356,18 @@ class CalendarView(ft.Container):
             Equally expanding day cells ordered from Monday to Sunday.
         """
         monday = date.fromisocalendar(*period, 1)
+        sessions = get_calendar_sessions_by_date(monday, monday + timedelta(days=6))
         today = date.today()
         return ft.Column(
             expand=True,
             spacing=CELL_SPACING,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             controls=[
-                build_week_cell(monday + timedelta(days=offset), today, weekday)
+                build_week_cell(
+                    monday + timedelta(days=offset), today, weekday,
+                    [s.session_type for s in sessions.get(monday + timedelta(days=offset), ())],
+                    [s.description for s in sessions.get(monday + timedelta(days=offset), ())],
+                )
                 for offset, weekday in enumerate(WEEKDAY_NAMES)
             ],
         )
@@ -428,9 +439,14 @@ class CalendarView(ft.Container):
         event : ft.Event[ft.SegmentedButton]
             Selection event whose control identifies the requested view.
         """
+        self._mode = "month" if event.control.selected == ["month"] else "week"
+        self.refresh()
+        self.update()
+
+    def refresh(self: Self) -> None:
+        """Reload sessions and preserve the view; the caller updates the page."""
         self._period_content.content = (
             self._build_month_view()
-            if event.control.selected == ["month"]
+            if self._mode == "month"
             else self._build_week_view()
         )
-        self.update()

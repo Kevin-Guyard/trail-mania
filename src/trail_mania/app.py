@@ -13,6 +13,8 @@ def change_page(
 ) -> None:
 
     index = event.control.selected_index
+    if isinstance(views[index], CalendarView):
+        views[index].refresh()
     views_container.content = views[index]
     page.update()
 

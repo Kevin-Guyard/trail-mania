@@ -11,6 +11,8 @@ from sqlalchemy.exc import IntegrityError, StatementError
 from sqlalchemy.orm import Session as DatabaseSession
 
 from trail_mania.database import create_database_engine, get_database_path, initialize_database
+from trail_mania.session_repository import get_session_types_by_date
+from trail_mania.session_types import SessionType
 from trail_mania.models import (
     Session,
     SessionEnduranceActive,
@@ -40,6 +42,24 @@ def detail_values():
 
 
 class DatabaseTests(unittest.TestCase):
+    def test_calendar_session_query_preserves_duplicates_and_inclusive_range(self):
+        first, last = date(2026, 12, 31), date(2027, 1, 1)
+        with DatabaseSession(self.engine) as db:
+            db.add_all([
+                Session(date=first - timedelta(days=1), session_type=SessionType.VO2MAX),
+                Session(date=first, session_type=SessionType.EASY_RUN),
+                Session(date=first, session_type=SessionType.LEG_STRENGTH),
+                Session(date=last, session_type=SessionType.THRESHOLD),
+                Session(date=last, session_type=SessionType.THRESHOLD),
+                Session(date=last + timedelta(days=1), session_type=SessionType.LONG_RUN),
+            ])
+            db.commit()
+        self.assertEqual(get_session_types_by_date(first, last), {
+            first: [SessionType.EASY_RUN, SessionType.LEG_STRENGTH],
+            last: [SessionType.THRESHOLD, SessionType.THRESHOLD],
+        })
+        self.assertEqual(get_session_types_by_date(date(2025, 1, 1), date(2025, 1, 2)), {})
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

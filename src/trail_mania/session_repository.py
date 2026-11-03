@@ -5,7 +5,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Final, Self, cast
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session as DatabaseSession
+from sqlalchemy.orm import joinedload
 
 from trail_mania.database import create_database_engine
 from trail_mania.models import (
@@ -22,6 +24,9 @@ from trail_mania.session_types import (
     SessionDetailValues,
     SessionInputValue,
     SessionType,
+    SESSION_FORMATS,
+    Slope,
+    Terrain,
 )
 
 type SessionDetailModel = (
@@ -41,6 +46,98 @@ DETAIL_MODELS: Final[dict[SessionType, type[SessionDetailModel]]] = {
     SessionType.THRESHOLD: SessionSeuil,
     SessionType.VO2MAX: SessionVO2max,
 }
+
+_DETAIL_RELATIONSHIPS: Final[dict[SessionType, str]] = {
+    SessionType.LONG_RUN: "sortie_longue",
+    SessionType.EASY_RUN: "endurance_fondamentale",
+    SessionType.STEADY_RUN: "endurance_active",
+    SessionType.THRESHOLD: "seuil",
+    SessionType.VO2MAX: "vo2max",
+}
+
+
+@dataclass(frozen=True)
+class CalendarSession:
+    """Carry a session's color type and formatted weekly description."""
+
+    session_type: SessionType
+    description: str = ""
+
+
+def get_calendar_sessions_by_date(start: date, end: date) -> dict[date, list[CalendarSession]]:
+    """Read weekly session descriptions with details loaded in a single query.
+
+    Dates are inclusive and insertion order is preserved within each day.
+    Interval formats are recovered from the populated work repetition columns.
+    """
+    engine = create_database_engine()
+    try:
+        with DatabaseSession(engine) as db:
+            rows = db.scalars(
+                select(Session)
+                .options(*(
+                    joinedload(getattr(Session, name))
+                    for name in _DETAIL_RELATIONSHIPS.values()
+                ))
+                .where(Session.date.between(start, end))
+                .order_by(Session.date, Session.id)
+            )
+            sessions: dict[date, list[CalendarSession]] = {}
+            for session in rows:
+                session_type = SessionType(session.session_type)
+                description = ""
+                if session_type.has_details:
+                    detail = getattr(session, _DETAIL_RELATIONSHIPS[session_type])
+                    if detail is not None:
+                        description = _calendar_description(session_type, detail)
+                sessions.setdefault(session.date, []).append(CalendarSession(session_type, description))
+            return sessions
+    finally:
+        engine.dispose()
+
+
+def _calendar_description(session_type: SessionType, detail: SessionDetailModel) -> str:
+    """Format terrain, slope, conditional movement and interval format."""
+    parts = [detail.field_type, detail.slope_type]
+    if detail.field_type == Terrain.TREADMILL.label and detail.slope_type == Slope.HILLY.label:
+        if detail.dynamic_type:
+            parts.append(detail.dynamic_type)
+    if session_type.has_format:
+        repetitions = sum(
+            getattr(detail, f"velocity_ON_{index}", None) is not None
+            for index in range(1, 7)
+        )
+        # A single threshold effort is stored as repetition 1, but means Continu.
+        if session_type == SessionType.THRESHOLD and repetitions == 1:
+            repetitions = 0
+        session_format = next(
+            choice for choice in SESSION_FORMATS[session_type]
+            if choice.repetitions == repetitions
+        )
+        parts.append(f"x{session_format.repetitions or 1}")
+    return " - ".join(parts)
+
+
+def get_session_types_by_date(start: date, end: date) -> dict[date, list[SessionType]]:
+    """Read session types in an inclusive date range, ordered by insertion ID.
+
+    Preserve repeated types so each recorded session gets its own calendar band.
+    The caller initializes the database before reading, as at app startup.
+    """
+    engine = create_database_engine()
+    try:
+        with DatabaseSession(engine) as db:
+            rows = db.execute(
+                select(Session.date, Session.session_type)
+                .where(Session.date.between(start, end))
+                .order_by(Session.date, Session.id)
+            )
+            sessions: dict[date, list[SessionType]] = {}
+            for day, session_type in rows:
+                sessions.setdefault(day, []).append(SessionType(session_type))
+            return sessions
+    finally:
+        engine.dispose()
 
 
 @dataclass(frozen=True)

@@ -1,8 +1,11 @@
 from datetime import date
+from collections.abc import Sequence
 from typing import Final, cast
 
 import flet as ft
 
+from trail_mania.session_colors import SESSION_COLORS
+from trail_mania.session_types import SessionType
 
 CELL_SPACING: Final[int] = 4
 WEEKDAY_NAMES: Final[tuple[str, ...]] = ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim")
@@ -10,6 +13,7 @@ WEEKDAY_NAMES: Final[tuple[str, ...]] = ("Lun", "Mar", "Mer", "Jeu", "Ven", "Sam
 _DATE_FONT_SIZE: Final[int] = 14
 _DATE_LABEL_HEIGHT: Final[int] = 24
 _WEEK_DATE_WIDTH: Final[int] = 48
+_WEEK_SESSION_GUTTER: Final[int] = _WEEK_DATE_WIDTH + 12
 
 
 def build_weekday_text(weekday: str) -> ft.Text:
@@ -33,7 +37,10 @@ def build_weekday_text(weekday: str) -> ft.Text:
     )
 
 
-def build_month_cell(day: date, today: date, month: tuple[int, int]) -> ft.Container:
+def build_month_cell(
+    day: date, today: date, month: tuple[int, int],
+    session_types: Sequence[SessionType] = (),
+) -> ft.Container:
     """Build a monthly day cell with a number in its upper-right corner.
 
     Parameters
@@ -65,10 +72,14 @@ def build_month_cell(day: date, today: date, month: tuple[int, int]) -> ft.Conta
         padding=ft.Padding.only(bottom=2) if is_today else 0,
         content=_build_date_text(str(day.day), is_today=is_today, muted=not in_month),
     )
-    return _build_day_cell(day, label)
+    return _build_day_cell(day, label, session_types=session_types)
 
 
-def build_week_cell(day: date, today: date, weekday: str) -> ft.Container:
+def build_week_cell(
+    day: date, today: date, weekday: str,
+    session_types: Sequence[SessionType] = (),
+    session_labels: Sequence[str] = (),
+) -> ft.Container:
     """Build a weekly day cell with its weekday and day/month date.
 
     Parameters
@@ -84,7 +95,8 @@ def build_week_cell(day: date, today: date, weekday: str) -> ft.Container:
     -------
     ft.Container
         A bordered day cell with the date in the upper-right corner and an
-        oval badge when it represents today.
+        oval badge when it represents today. Session details are centered in
+        their colored bands, between reserved weekday and date margins.
     """
     is_today = day == today
     label = ft.Container(
@@ -113,7 +125,9 @@ def build_week_cell(day: date, today: date, weekday: str) -> ft.Container:
         alignment=ft.Alignment.CENTER_LEFT,
         content=build_weekday_text(weekday),
     )
-    return _build_day_cell(day, label, weekday_label)
+    return _build_day_cell(
+        day, label, weekday_label, session_types=session_types, session_labels=session_labels,
+    )
 
 
 def _build_date_text(value: str, *, is_today: bool, muted: bool = False) -> ft.Text:
@@ -149,6 +163,9 @@ def _build_day_cell(
     day: date,
     date_label: ft.Container,
     weekday_label: ft.Container | None = None,
+    *,
+    session_types: Sequence[SessionType] = (),
+    session_labels: Sequence[str] = (),
 ) -> ft.Container:
     """Compose the shared background, labels, border, and full-date tooltip.
 
@@ -164,15 +181,37 @@ def _build_day_cell(
     Returns
     -------
     ft.Container
-        An expanding rounded cell with a white background below the labels
-        and a black foreground border.
+        An expanding rounded cell with session colors below the labels
+        and a black foreground border. Empty days remain white.
     """
-    # Separate the background from labels to allow future split background fills.
+    bands: list[ft.Control] = []
+    def session_label(index: int) -> ft.Container | None:
+        if weekday_label is None or session_types[index] == SessionType.LEG_STRENGTH:
+            return None
+        if index >= len(session_labels) or not session_labels[index]:
+            return None
+        return _build_week_session_label(session_labels[index])
+
+    for index, session_type in enumerate(session_types):
+        if bands:
+            bands.append(ft.Container(height=1, bgcolor=ft.Colors.BLACK_26))
+        bands.append(ft.Container(
+            expand=True,
+            bgcolor=SESSION_COLORS[session_type],
+            content=session_label(index),
+        ))
     layers: list[ft.Control] = [
         ft.Container(
-            bgcolor=ft.Colors.WHITE,
+            bgcolor=SESSION_COLORS[session_types[0]] if session_types else ft.Colors.WHITE,
             border_radius=ft.BorderRadius.all(11),
             clip_behavior=ft.ClipBehavior.ANTI_ALIAS,
+            content=ft.Column(
+                spacing=0,
+                horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                controls=bands,
+            ) if len(session_types) > 1 else (
+                session_label(0) if session_types else None
+            ),
         ),
         date_label,
     ]
@@ -189,6 +228,29 @@ def _build_day_cell(
         ),
         tooltip=f"{day.day:02d}/{day.month:02d}/{day.year}",
         content=ft.Stack(fit=ft.StackFit.EXPAND, controls=layers),
+    )
+
+
+def _build_week_session_label(description: str) -> ft.Container:
+    """Center session details within a band and keep the day/date gutters clear.
+
+    Equal side margins preserve the cell's horizontal center. A single line
+    with ellipsis handles narrow cells; clipping keeps text inside short bands.
+    """
+    return ft.Container(
+        alignment=ft.Alignment.CENTER,
+        padding=ft.Padding.symmetric(horizontal=_WEEK_SESSION_GUTTER),
+        clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        content=ft.Text(
+            description,
+            size=13,
+            weight=ft.FontWeight.W_400,
+            color=ft.Colors.BLACK,
+            text_align=ft.TextAlign.CENTER,
+            no_wrap=True,
+            max_lines=1,
+            overflow=ft.TextOverflow.ELLIPSIS,
+        ),
     )
 
 

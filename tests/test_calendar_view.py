@@ -6,6 +6,9 @@ from unittest.mock import patch
 import flet as ft
 
 from trail_mania.views.calendar import calendar_view
+from trail_mania.session_colors import SESSION_COLORS
+from trail_mania.session_types import SessionType
+from trail_mania.session_repository import CalendarSession
 
 
 class FixedDate(date):
@@ -27,6 +30,17 @@ class CalendarViewTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch.object(calendar_view, "date", FixedDate))
         self.updates = self.enterContext(patch.object(ft.Control, "update", autospec=True))
+        self.session_reader = self.enterContext(patch.object(
+            calendar_view, "get_session_types_by_date", return_value={},
+        ))
+        self.week_session_reader = self.enterContext(patch.object(
+            calendar_view, "get_calendar_sessions_by_date",
+            side_effect=lambda start, end: {
+                day: [CalendarSession(t, "" if t == SessionType.LEG_STRENGTH else "Route - Sans pente")
+                      for t in types]
+                for day, types in self.session_reader.return_value.items()
+            },
+        ))
         self.view = calendar_view.CalendarView()
 
     def selector(self):
@@ -118,6 +132,121 @@ class CalendarViewTests(unittest.TestCase):
         self.assertFalse(self.selector().show_selected_icon)
         self.assertEqual(self.view.padding, 16)
         self.assertTrue(self.view.expand)
+
+    def test_recorded_session_colors_in_both_views(self):
+        for session_type, color in SESSION_COLORS.items():
+            self.session_reader.return_value = {date(2026, 11, 16): [session_type]}
+            for mode in ("month", "week"):
+                with self.subTest(session_type=session_type, mode=mode):
+                    self.select(mode)
+                    for cell in self.cells(self.grid()):
+                        background = cell.content.controls[0]
+                        self.assertEqual(
+                            background.bgcolor,
+                            color if cell.tooltip == "16/11/2026" else ft.Colors.WHITE,
+                        )
+
+    def test_multiple_sessions_split_day_into_equal_horizontal_bands(self):
+        for types in (
+            [SessionType.EASY_RUN, SessionType.THRESHOLD],
+            [SessionType.EASY_RUN, SessionType.EASY_RUN],
+            [SessionType.EASY_RUN, SessionType.THRESHOLD, SessionType.LEG_STRENGTH],
+        ):
+            self.session_reader.return_value = {date(2026, 11, 16): types}
+            for mode in ("month", "week"):
+                with self.subTest(types=types, mode=mode):
+                    self.select(mode)
+                    cell = next(c for c in self.cells(self.grid()) if c.tooltip == "16/11/2026")
+                    background = cell.content.controls[0]
+                    self.assertEqual(background.clip_behavior, ft.ClipBehavior.ANTI_ALIAS)
+                    bands = background.content
+                    self.assertEqual(bands.spacing, 0)
+                    self.assertEqual(len(bands.controls), 2 * len(types) - 1)
+                    self.assertEqual(
+                        [band.bgcolor for band in bands.controls[::2]],
+                        [SESSION_COLORS[t] for t in types],
+                    )
+                    self.assertTrue(all(b.expand for b in bands.controls[::2]))
+                    for separator in bands.controls[1::2]:
+                        self.assertEqual(separator.height, 1)
+                        self.assertEqual(separator.bgcolor, ft.Colors.BLACK_26)
+
+    def test_refresh_reloads_sessions_and_preserves_week(self):
+        self.select("week", (2026, 53))
+        self.session_reader.return_value = {date(2027, 1, 1): [SessionType.LEG_STRENGTH]}
+        self.view.refresh()
+        self.assertEqual(self.view.selected_week, (2026, 53))
+        self.assertEqual(self.title().value, "Semaine 53 - 2026")
+        cell = next(c for c in self.cells(self.grid()) if c.tooltip == "01/01/2027")
+        self.assertEqual(cell.content.controls[0].bgcolor, SESSION_COLORS[SessionType.LEG_STRENGTH])
+
+    def test_week_session_names_are_centered_in_each_color_band(self):
+        for types in (
+            [SessionType.EASY_RUN],
+            [SessionType.EASY_RUN, SessionType.THRESHOLD],
+        ):
+            with self.subTest(types=types):
+                self.session_reader.return_value = {date(2026, 11, 16): types}
+                self.select("week")
+                cell = next(c for c in self.cells(self.grid()) if c.tooltip == "16/11/2026")
+                background = cell.content.controls[0]
+                labels = (
+                    [background.content] if len(types) == 1 else
+                    [band.content for band in background.content.controls[::2]]
+                )
+                self.assertEqual([label.content.value for label in labels], ["Route - Sans pente"] * len(types))
+                for label in labels:
+                    self.assertEqual(label.alignment, ft.Alignment.CENTER)
+                    self.assertEqual(label.padding.left, label.padding.right)
+                    # Reserve the date badge (4 + 48 px) plus a gap on both sides.
+                    self.assertGreater(label.padding.right, 52)
+                    self.assertEqual(label.content.text_align, ft.TextAlign.CENTER)
+                    self.assertTrue(label.content.no_wrap)
+                    self.assertEqual(label.content.max_lines, 1)
+                    self.assertEqual(label.content.overflow, ft.TextOverflow.ELLIPSIS)
+                    self.assertEqual(label.content.size, 13)
+                    self.assertEqual(label.content.weight, ft.FontWeight.W_400)
+                empty_cell = next(c for c in self.cells(self.grid()) if c.tooltip == "17/11/2026")
+                self.assertIsNone(empty_cell.content.controls[0].content)
+
+    def test_week_strength_session_has_no_text_in_single_or_split_cell(self):
+        for types in (
+            [SessionType.LEG_STRENGTH],
+            [SessionType.EASY_RUN, SessionType.LEG_STRENGTH],
+        ):
+            self.session_reader.return_value = {date(2026, 11, 16): types}
+            self.select("week")
+            cell = next(c for c in self.cells(self.grid()) if c.tooltip == "16/11/2026")
+            background = cell.content.controls[0]
+            if len(types) == 1:
+                self.assertIsNone(background.content)
+            else:
+                self.assertIsNone(background.content.controls[-1].content)
+
+    def test_month_cells_do_not_display_session_names(self):
+        types = [SessionType.EASY_RUN, SessionType.LEG_STRENGTH]
+        self.session_reader.return_value = {date(2026, 11, 16): types}
+        self.select("month")
+        cell = next(c for c in self.cells(self.grid()) if c.tooltip == "16/11/2026")
+        self.assertFalse(any(
+            isinstance(control, ft.Text) and control.value in types
+            for control in walk_controls(cell)
+        ))
+
+    def test_queries_include_adjacent_month_days_and_prepared_pages(self):
+        self.session_reader.reset_mock()
+        self.select("month", (2026, 11))
+        self.assertEqual(
+            self.session_reader.call_args_list[1].args,
+            (date(2026, 10, 26), date(2026, 12, 6)),
+        )
+        self.assertEqual(self.session_reader.call_count, 3)
+        self.week_session_reader.reset_mock()
+        self.select("week", (2026, 53))
+        self.assertEqual(
+            self.week_session_reader.call_args_list[1].args,
+            (date(2026, 12, 28), date(2027, 1, 3)),
+        )
 
     def test_period_navigation_across_years(self):
         for mode, initial, following in (

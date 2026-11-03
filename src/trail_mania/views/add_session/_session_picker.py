@@ -7,15 +7,8 @@ from typing import Final, Self
 import flet as ft
 
 from trail_mania.session_types import SessionType
+from trail_mania.session_colors import SESSION_OPTIONS
 
-SESSION_OPTIONS: Final[tuple[tuple[SessionType, ft.Colors], ...]] = (
-    (SessionType.LONG_RUN, ft.Colors.LIGHT_BLUE_300),
-    (SessionType.EASY_RUN, ft.Colors.LIGHT_GREEN_300),
-    (SessionType.STEADY_RUN, ft.Colors.YELLOW_600),
-    (SessionType.THRESHOLD, ft.Colors.ORANGE_400),
-    (SessionType.VO2MAX, ft.Colors.RED_400),
-    (SessionType.LEG_STRENGTH, ft.Colors.GREY_500),
-)
 _LABEL_HEIGHT: Final[int] = 64
 _LABEL_SPACING: Final[int] = 12
 

@@ -21,7 +21,7 @@ from trail_mania.components import (
 from trail_mania.components.numeric_input import NumericInput
 from trail_mania.database import create_database_engine, initialize_database
 from trail_mania.models import Base, Session, SessionSortieLongue
-from trail_mania.session_repository import DETAIL_MODELS
+from trail_mania.session_repository import DETAIL_MODELS, get_calendar_sessions_by_date
 from trail_mania.views.add_session._session_form import SessionForm
 from trail_mania.views.add_session_view import AddSessionView
 
@@ -40,6 +40,28 @@ SELECTED_DATE = date(2026, 1, 3)
 
 
 class SessionSubmissionTests(unittest.TestCase):
+    def test_weekly_descriptions_use_saved_configuration_and_interval_format(self):
+        for title, session_format, repetitions in VARIANTS:
+            for terrain, slope, movement, location in (
+                ("road", "flat", None, "Route - Sans pente"),
+                ("technical", "hilly", None, "Terrain technique - Avec pente"),
+                ("treadmill", "flat", None, "Tapis - Sans pente"),
+                ("treadmill", "hilly", "walk", "Tapis - Avec pente - Marche"),
+                ("treadmill", "hilly", "run", "Tapis - Avec pente - Course"),
+            ):
+                with self.subTest(title=title, format=session_format, location=location):
+                    form = self.make_form(title, session_format, terrain, slope, movement)
+                    self.fill_form(form)
+                    self.click(form)
+                    sessions = get_calendar_sessions_by_date(SELECTED_DATE, SELECTED_DATE)
+                    last = sessions[SELECTED_DATE][-1]
+                    expected = location
+                    if session_format is not None:
+                        expected += f" - x{repetitions or 1}"
+                    self.assertEqual(last.session_type, title)
+                    self.assertEqual(last.description, expected)
+        self.assertEqual(get_calendar_sessions_by_date(date(2020, 1, 1), date(2020, 1, 7)), {})
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
@@ -167,6 +189,10 @@ class SessionSubmissionTests(unittest.TestCase):
         self.fill_form(form)
         button = self.click(form)
         button.on_click(SimpleNamespace(control=button))
+        self.assertEqual(
+            get_calendar_sessions_by_date(SELECTED_DATE, SELECTED_DATE)[SELECTED_DATE][0].description,
+            "",
+        )
         with DatabaseSession(self.engine) as db:
             parent = db.scalars(select(Session)).one()
             self.assertEqual(parent.session_type, "Muscu jambes")
