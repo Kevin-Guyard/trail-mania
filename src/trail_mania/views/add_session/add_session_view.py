@@ -6,11 +6,11 @@ from typing import Final, Self
 import flet as ft
 from sqlalchemy.exc import SQLAlchemyError
 
+from trail_mania.components.session_type_picker import SessionTypePicker
 from trail_mania.session_repository import create_session
 from trail_mania.session_types import SessionType
 from trail_mania.views.add_session._session_details import SessionDetailsForm
 from trail_mania.views.add_session._session_form import SessionForm
-from trail_mania.views.add_session._session_picker import SessionTypePicker
 
 _LOGGER: Final[logging.Logger] = logging.getLogger(__name__)
 

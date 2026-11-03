@@ -1,12 +1,45 @@
 """Terrain selection using bundled SVG and built-in Flet icons."""
 
+from functools import cache
 from pathlib import Path
 from typing import Self
 
 import flet as ft
 
-from trail_mania.components.choice_selector import ChoiceSelector, selector_segment
+from trail_mania.components.choice_selector import (
+    ChoiceSelector,
+    selector_icon,
+    selector_segment,
+)
 from trail_mania.session_types import Terrain
+
+
+# Cache asset bytes, not Flet controls: each rendered icon needs its own parent.
+@cache
+def _tabler_svg(name: str) -> bytes:
+    """Read and cache the bytes of a bundled Tabler SVG asset.
+
+    Parameters
+    ----------
+    name : str
+        Basename in the adjacent icons directory, without the SVG extension.
+
+    Returns
+    -------
+    bytes
+        SVG source reused by every rendered instance of this asset.
+
+    Raises
+    ------
+    OSError
+        If the asset is missing or cannot be read on its first request.
+
+    Notes
+    -----
+    The cache lasts for the Python process. Each caller still creates its
+    own image control so rows do not share control instances.
+    """
+    return Path(__file__).with_name("icons").joinpath(f"{name}.svg").read_bytes()
 
 
 def _tabler_icon(name: str, label: str) -> ft.Image:
@@ -35,13 +68,40 @@ def _tabler_icon(name: str, label: str) -> ft.Image:
     filesystem path or external asset URL. Licensing is recorded in icons/LICENSE.
     """
     return ft.Image(
-        src=Path(__file__).with_name("icons").joinpath(f"{name}.svg").read_bytes(),
+        src=_tabler_svg(name),
         width=27,
         height=27,
         color=ft.Colors.BLACK,
         tooltip=label,
         semantics_label=label,
     )
+
+
+def terrain_icon(terrain: Terrain) -> ft.Control:
+    """Build the terrain pictogram shared by selectors and table cells.
+
+    Parameters
+    ----------
+    terrain : Terrain
+        Supported terrain whose canonical label identifies the pictogram.
+
+    Returns
+    -------
+    ft.Control
+        Fresh black SVG image for road or treadmill, or a built-in icon for
+        rolling or technical terrain, with a tooltip and accessibility label.
+
+    Raises
+    ------
+    OSError
+        If a requested bundled SVG has not been cached and cannot be read.
+    """
+    if terrain == Terrain.ROAD:
+        return _tabler_icon("road", terrain.label)
+    if terrain == Terrain.TREADMILL:
+        return _tabler_icon("treadmill", terrain.label)
+    icon = ft.Icons.ROUTE if terrain == Terrain.ROLLING else ft.Icons.TERRAIN
+    return selector_icon(icon, terrain.label)
 
 
 @ft.control
@@ -64,11 +124,6 @@ class TerrainSelector(ChoiceSelector):
             Fresh, labeled segments using the shared session-choice keys.
         """
         return [
-            selector_segment(terrain, terrain.label, icon)
-            for terrain, icon in (
-                (Terrain.ROAD, _tabler_icon("road", Terrain.ROAD.label)),
-                (Terrain.ROLLING, ft.Icons.ROUTE),
-                (Terrain.TECHNICAL, ft.Icons.TERRAIN),
-                (Terrain.TREADMILL, _tabler_icon("treadmill", Terrain.TREADMILL.label)),
-            )
+            selector_segment(terrain, terrain.label, terrain_icon(terrain))
+            for terrain in Terrain
         ]

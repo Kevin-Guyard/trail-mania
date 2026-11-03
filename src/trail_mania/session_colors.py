@@ -6,7 +6,6 @@ import flet as ft
 
 from trail_mania.session_types import SessionType
 
-
 SESSION_OPTIONS: Final[tuple[tuple[SessionType, ft.Colors], ...]] = (
     (SessionType.LONG_RUN, ft.Colors.LIGHT_BLUE_400),
     (SessionType.EASY_RUN, ft.Colors.LIGHT_GREEN_400),

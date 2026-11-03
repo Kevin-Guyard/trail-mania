@@ -1,5 +1,6 @@
 """Session choices shared by the form controls and persistence layer."""
 
+from collections.abc import Sequence
 from datetime import timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -209,3 +210,53 @@ SESSION_FORMATS: Final[dict[SessionType, tuple[SessionFormat, ...]]] = {
         SessionFormat.SIX_REPETITIONS,
     ),
 }
+
+
+def session_format_from_speeds(
+    session_type: SessionType,
+    work_speeds: Sequence[float | None],
+    recovery_speeds: Sequence[float | None] = (),
+) -> SessionFormat:
+    """Infer a saved interval format from populated work and recovery slots.
+
+    Parameters
+    ----------
+    session_type : SessionType
+        Threshold or VO2max family whose supported formats should be used.
+    work_speeds : sequence of float or None
+        Work speeds in repetition order. None denotes an unused slot; zero
+        counts as a populated measurement.
+    recovery_speeds : sequence of float or None, optional
+        Intermediate recovery speeds, used to identify repeated threshold
+        efforts. Defaults to an empty sequence.
+
+    Returns
+    -------
+    SessionFormat
+        Three-repetition threshold if any work slot beyond the first or any
+        recovery slot is populated; continuous threshold otherwise. For
+        VO2max, the highest populated optional work slot selects five or six
+        repetitions, with four repetitions as the fallback.
+
+    Raises
+    ------
+    ValueError
+        If the session family does not support interval formats.
+
+    Notes
+    -----
+    Threshold measurements may be partially filled. This function infers a
+    format from slot occupancy and does not validate the measurements.
+    """
+    if session_type == SessionType.THRESHOLD:
+        repeated = any(speed is not None for speed in (*work_speeds[1:], *recovery_speeds))
+        return SessionFormat.THREE_REPETITIONS if repeated else SessionFormat.CONTINUOUS
+    if session_type == SessionType.VO2MAX:
+        # Check optional work slots from the largest format down. A stored zero
+        # still identifies a populated repetition.
+        for session_format in reversed(SESSION_FORMATS[session_type][1:]):
+            index = session_format.repetitions - 1
+            if len(work_speeds) > index and work_speeds[index] is not None:
+                return session_format
+        return SessionFormat.FOUR_REPETITIONS
+    raise ValueError("An interval session type is required")

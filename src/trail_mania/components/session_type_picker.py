@@ -1,4 +1,4 @@
-"""The initial list of session types."""
+"""Shared session type picker for browsing and adding sessions."""
 
 from collections.abc import Callable
 from dataclasses import field
@@ -6,8 +6,8 @@ from typing import Final, Self
 
 import flet as ft
 
-from trail_mania.session_types import SessionType
 from trail_mania.session_colors import SESSION_OPTIONS
+from trail_mania.session_types import SessionType
 
 _LABEL_HEIGHT: Final[int] = 64
 _LABEL_SPACING: Final[int] = 12
@@ -19,8 +19,12 @@ class SessionTypePicker(ft.Column):
 
     Parameters
     ----------
+    title : str, optional
+        Heading displayed above the session types; defaults to "Ajouter une session".
     on_select : callable or None, optional
         Callback receiving the selected SessionType; defaults to None.
+    excluded_types : tuple of SessionType, optional
+        Types omitted from the list; defaults to an empty tuple.
 
     Notes
     -----
@@ -28,6 +32,8 @@ class SessionTypePicker(ft.Column):
     remain on the Python side and are excluded from Flet serialization.
     """
 
+    title: str = "Ajouter une session"
+    excluded_types: tuple[SessionType, ...] = field(default=(), metadata={"skip": True})
     on_select: Callable[[SessionType], None] | None = field(
         default=None,
         metadata={"skip": True},
@@ -42,22 +48,23 @@ class SessionTypePicker(ft.Column):
         while preserving scrolling on shorter screens.
         """
         self.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+        options = [option for option in SESSION_OPTIONS if option[0] not in self.excluded_types]
         labels = ft.Column(
             # Bound the scrollable list so its parent can center it vertically.
-            height=len(SESSION_OPTIONS) * _LABEL_HEIGHT
-            + (len(SESSION_OPTIONS) - 1) * _LABEL_SPACING,
+            height=len(options) * _LABEL_HEIGHT
+            + max(0, len(options) - 1) * _LABEL_SPACING,
             spacing=_LABEL_SPACING,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
             scroll=ft.ScrollMode.AUTO,
             controls=[
-                self._session_label(session_type, color) for session_type, color in SESSION_OPTIONS
+                self._session_label(session_type, color) for session_type, color in options
             ],
         )
         self.controls = [
             ft.Container(
                 padding=ft.Padding.only(top=12),
                 content=ft.Text(
-                    "Ajouter une session",
+                    self.title,
                     size=28,
                     weight=ft.FontWeight.BOLD,
                     color=ft.Colors.BLACK,
@@ -82,6 +89,16 @@ class SessionTypePicker(ft.Column):
         ft.Container
             Rounded, fixed-height label containing the session's French name.
         """
+        def on_click(event: ft.Event[ft.Container]) -> None:
+            """Forward a label click using its captured session type.
+
+            Parameters
+            ----------
+            event : ft.Event[ft.Container]
+                Click event emitted by this label; its payload is unused.
+            """
+            self._select(session_type)
+
         return ft.Container(
             height=_LABEL_HEIGHT,
             alignment=ft.Alignment.CENTER,
@@ -95,7 +112,7 @@ class SessionTypePicker(ft.Column):
                 color=ft.Colors.WHITE,
                 text_align=ft.TextAlign.CENTER,
             ),
-            on_click=lambda event: self._select(session_type),
+            on_click=on_click,
         )
 
     def _select(self: Self, session_type: SessionType) -> None:

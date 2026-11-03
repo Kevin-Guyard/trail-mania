@@ -1,5 +1,8 @@
+"""Construct application tabs and refresh recorded data when tabs change."""
+
+from collections.abc import Sequence
+
 import flet as ft
-from typing import List
 
 from trail_mania.database import initialize_database
 from trail_mania.views import AddSessionView, CalendarView, SessionsView, StatisticsView
@@ -8,27 +11,66 @@ from trail_mania.views import AddSessionView, CalendarView, SessionsView, Statis
 def change_page(
         event: ft.Event[ft.NavigationBar],
         page: ft.Page,
-        views: List[ft.Control],
+        views: Sequence[ft.Control],
         views_container: ft.Container
 ) -> None:
+    """Activate the selected tab and refresh views that display stored data.
 
+    Parameters
+    ----------
+    event : ft.Event[ft.NavigationBar]
+        Navigation event whose selected index identifies the destination view.
+    page : ft.Page
+        Mounted application page receiving the final client update.
+    views : sequence of ft.Control
+        Persistent view instances in navigation destination order.
+    views_container : ft.Container
+        Container whose content is replaced by the selected view.
+
+    Notes
+    -----
+    Calendar and session views refresh before being displayed. View instances
+    are retained across tab changes, preserving their navigation and filters.
+    One page update sends the refreshed content after the switch.
+    """
     index = event.control.selected_index
-    if isinstance(views[index], CalendarView):
-        views[index].refresh()
-    views_container.content = views[index]
+    view = views[index]
+    if isinstance(view, (CalendarView, SessionsView)):
+        view.refresh()
+    views_container.content = view
     page.update()
 
 
 def create_app(
         page: ft.Page
 ) -> None:
+    """Initialize storage and mount the application's persistent tab views.
+
+    Parameters
+    ----------
+    page : ft.Page
+        Flet page configured with the calendar, session browser, statistics
+        and session creation destinations.
+
+    Raises
+    ------
+    sqlalchemy.exc.SQLAlchemyError
+        If database initialization or initial calendar loading fails.
+    OSError
+        If the database storage directory cannot be accessed or created.
+
+    Notes
+    -----
+    The calendar is displayed first. The session browser starts at its type
+    picker and defers loading measurements until a type is selected.
+    """
     initialize_database()
 
     page.title = "Trail Mania"
     page.padding = 0
     page.bgcolor = "#F5F5F5"
 
-    views = [CalendarView(), SessionsView(), StatisticsView(), AddSessionView()]
+    views: list[ft.Control] = [CalendarView(), SessionsView(), StatisticsView(), AddSessionView()]
 
     views_container = ft.Container(
         expand=True,

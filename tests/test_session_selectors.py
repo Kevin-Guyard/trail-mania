@@ -11,9 +11,9 @@ from flet.controls.object_patch import ObjectPatch
 from flet.messaging.protocol import configure_encode_object_for_msgpack
 from flet.utils.object_model import patch_dataclass
 
-from trail_mania.views.add_session_view import AddSessionView
+from trail_mania.views.add_session import AddSessionView
 from trail_mania.views.add_session._session_form import SessionForm
-from trail_mania.views.add_session._session_picker import SESSION_OPTIONS
+from trail_mania.session_colors import SESSION_OPTIONS
 from trail_mania.components import (
     CommentsInput, DateSelector, DistanceInput, DurationInput, ElevationInput, HeartRateInput, InclinationInput,
     RPEInput, ThresholdFormatSelector, SpeedInput, TemperatureInput, VO2maxFormatSelector, WeatherSelector,
@@ -129,7 +129,7 @@ class SessionSelectorsTest(unittest.TestCase):
         changes, _, _ = ObjectPatch.from_diff(
             None if initial else control, control, control_cls=BaseControl
         )
-        # La sérialisation enregistre les instantanés utilisés par Flet.
+        # Serialization records the snapshots used by Flet.
         return msgpack.unpackb(
             msgpack.packb(
                 changes.to_message(),
@@ -157,7 +157,7 @@ class SessionSelectorsTest(unittest.TestCase):
 
                 choose_terrain(["road"])
                 for next_terrain in (["technical"], ["rolling"], []):
-                    # Simuler une sélection client sans passer par le setter Python.
+                    # Simulate a client selection without calling the Python setter.
                     patch_dataclass(elevation.content, {"selected": ["hilly"]})
                     with patch.object(
                         ft.SegmentedButton,
@@ -170,8 +170,8 @@ class SessionSelectorsTest(unittest.TestCase):
 
                     message = choose_terrain(next_terrain)
                     self.assertIsNone(elevation.selected)
-                    # Une valeur Python vide ne suffit pas : le message client
-                    # doit aussi contenir la réinitialisation de selected.
+                    # An empty Python value is not enough: the client patch must
+                    # also contain the reset of selected.
                     self.assertTrue(
                         any(
                             len(operation) == 4
@@ -276,7 +276,7 @@ class SessionSelectorsTest(unittest.TestCase):
     def test_secondary_form_requires_all_main_form_choices_and_updates_on_changes(self):
         for title, _ in SESSION_OPTIONS[:-1]:
             if title in ("Seuil", "VO2max"):
-                continue  # Ces formulaires requièrent aussi le format, testé séparément.
+                continue  # These forms also require a format, which is tested separately.
             with self.subTest(title=title), patch.object(AddSessionView, "update"):
                 view = AddSessionView()
                 view._open_session(title)
@@ -317,7 +317,7 @@ class SessionSelectorsTest(unittest.TestCase):
                             secondary.content, title, terrain_value, elevation_value,
                         )
 
-                # Le changement de pente recalcule les champs requis.
+                # Changing the slope recomputes the required fields.
                 choose(elevation, "flat")
                 self.assertTrue(secondary.visible)
                 self.assert_secondary_fields(secondary.content, title, "treadmill", "flat")
@@ -400,14 +400,18 @@ class SessionSelectorsTest(unittest.TestCase):
                         if isinstance(c, NumericInput) and not isinstance(c, ZoneDurationInput)
                     ]
                     self.assertTrue(all(c.value is None for c in numeric_fields))
-                    # Les durées et vitesses de chaque phase portent des valeurs indépendantes.
+                    # Each phase has independent duration and speed values.
                     with patch.object(NumericInput, "update"):
-                        for index, field in enumerate(numeric_fields, start=1):
-                            field._field.value = str(index)
+                        expected = [
+                            Decimal("5.5") if isinstance(field, RPEInput) else Decimal(index)
+                            for index, field in enumerate(numeric_fields, start=1)
+                        ]
+                        for field, value in zip(numeric_fields, expected, strict=True):
+                            field._field.value = str(value)
                             field._field.on_change(SimpleNamespace(control=field._field))
                         self.assertEqual(
                             [field.value for field in numeric_fields],
-                            [Decimal(index) for index in range(1, len(numeric_fields) + 1)],
+                            expected,
                         )
                 choose(selector, None)
                 self.assertFalse(secondary.visible)
@@ -484,7 +488,7 @@ class SessionSelectorsTest(unittest.TestCase):
         self.assertIsInstance(picker, ft.DatePicker)
         self.assertEqual(picker.value, date.today())
         self.assertEqual(picker.last_date, date.today())
-        # Les dates sans heure évitent toute conversion UTC à l'ouverture.
+        # Dates without a time avoid UTC conversion when opening the picker.
         self.assertNotIsInstance(picker.value, datetime)
         self.assertNotIsInstance(picker.last_date, datetime)
         chosen = date.today() - timedelta(days=3)
@@ -594,7 +598,7 @@ class SessionSelectorsTest(unittest.TestCase):
                     def astimezone(self, tz=None):
                         return super().astimezone(tz or local_timezone)
 
-                # Minuit en Europe centrale arrive la veille dans le protocole UTC.
+                # Central European midnight falls on the previous day in the UTC protocol.
                 midnight = datetime(
                     selected_day.year, selected_day.month, selected_day.day,
                     tzinfo=local_timezone,
@@ -656,7 +660,7 @@ class SessionSelectorsTest(unittest.TestCase):
                     for op in operations
                 ), operations)
 
-            # Une autre case peut toujours remplacer le choix actif.
+            # Another option can still replace the active choice.
             choose(movement, "run")
             self.assertEqual(movement.selected, "run")
             choose(terrain, "road")

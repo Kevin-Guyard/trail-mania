@@ -12,6 +12,43 @@ from trail_mania.components.choice_selector import (
 from trail_mania.session_types import Weather
 
 
+def weather_icon(weather: Weather) -> ft.Control:
+    """Build the weather pictogram shared by selectors and table cells.
+
+    Parameters
+    ----------
+    weather : Weather
+        Supported weather condition to represent.
+
+    Returns
+    -------
+    ft.Control
+        Fresh black icon, or a semantic group of wind and rain icons for
+        combined weather. Both forms carry the canonical French label.
+    """
+    if weather == Weather.WIND_RAIN:
+        return ft.Semantics(
+            label=weather.label,
+            tooltip=weather.label,
+            content=ft.Row(
+                tight=True,
+                height=27,
+                spacing=2,
+                alignment=ft.MainAxisAlignment.CENTER,
+                controls=[
+                    selector_icon(ft.Icons.AIR, "Vent", size=20),
+                    selector_icon(ft.Icons.WATER_DROP_OUTLINED, "Pluie", size=20),
+                ],
+            ),
+        )
+    icon = {
+        Weather.NORMAL: ft.Icons.WB_SUNNY_OUTLINED,
+        Weather.WIND: ft.Icons.AIR,
+        Weather.RAIN: ft.Icons.WATER_DROP_OUTLINED,
+    }[weather]
+    return selector_icon(icon, weather.label)
+
+
 @ft.control
 class WeatherSelector(ChoiceSelector):
     """Collect optional outdoor weather as a single choice.
@@ -34,23 +71,13 @@ class WeatherSelector(ChoiceSelector):
             Fresh weather segments, including a combined icon for wind and rain.
         """
         return [
-            selector_segment(Weather.NORMAL, "Normale", ft.Icons.WB_SUNNY_OUTLINED),
-            selector_segment(Weather.WIND, "Vent", ft.Icons.AIR),
-            selector_segment(Weather.RAIN, "Pluie", ft.Icons.WATER_DROP_OUTLINED),
-            selector_segment(
-                Weather.WIND_RAIN,
-                "Vent & Pluie",
-                ft.Row(
-                    tight=True,
-                    height=27,
-                    spacing=2,
-                    alignment=ft.MainAxisAlignment.CENTER,
-                    controls=[
-                        selector_icon(ft.Icons.AIR, "Vent", size=20),
-                        selector_icon(ft.Icons.WATER_DROP_OUTLINED, "Pluie", size=20),
-                    ],
-                ),
-            ),
+            selector_segment(weather, caption, weather_icon(weather))
+            for weather, caption in (
+                (Weather.NORMAL, "Normale"),
+                (Weather.WIND, "Vent"),
+                (Weather.RAIN, "Pluie"),
+                (Weather.WIND_RAIN, "Vent & Pluie"),
+            )
         ]
 
     @property

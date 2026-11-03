@@ -23,7 +23,7 @@ from trail_mania.database import create_database_engine, initialize_database
 from trail_mania.models import Base, Session, SessionSortieLongue
 from trail_mania.session_repository import DETAIL_MODELS, get_calendar_sessions_by_date
 from trail_mania.views.add_session._session_form import SessionForm
-from trail_mania.views.add_session_view import AddSessionView
+from trail_mania.views.add_session import AddSessionView
 
 
 VARIANTS = (
@@ -256,7 +256,7 @@ class SessionSubmissionTests(unittest.TestCase):
 
         event.listen(SessionSortieLongue, "before_insert", fail_insert)
         try:
-            with self.assertLogs("trail_mania.views.add_session_view", level="ERROR"):
+            with self.assertLogs("trail_mania.views.add_session.add_session_view", level="ERROR"):
                 button = self.click(form)
         finally:
             event.remove(SessionSortieLongue, "before_insert", fail_insert)
