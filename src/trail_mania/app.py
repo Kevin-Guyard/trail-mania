@@ -7,6 +7,7 @@ from trail_mania_drive import GoogleDriveAuth
 
 from trail_mania.automatic_backup import AutomaticDriveBackup
 from trail_mania.database import initialize_database
+from trail_mania.navigation import configure_system_back
 from trail_mania.views import AddSessionView, CalendarView, SessionsView, StatisticsView
 from trail_mania.views.google_drive_view import GoogleDriveView
 
@@ -72,6 +73,7 @@ async def create_app(
     page.title = "Trail Mania"
     page.padding = 0
     page.bgcolor = "#F5F5F5"
+    configure_system_back(page)
 
     auth = GoogleDriveAuth()
     # Keep the service available for future backup operations.

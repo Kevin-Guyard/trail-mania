@@ -37,7 +37,7 @@ class DriveStartupTests(unittest.IsolatedAsyncioTestCase):
         self.enterContext(patch.dict(os.environ, {"FLET_APP_STORAGE_DATA": directory.name}))
 
     async def start(self, result=None, error=None):
-        page = Mock(platform=ft.PagePlatform.ANDROID, web=False, controls=[])
+        page = Mock(platform=ft.PagePlatform.ANDROID, web=False, controls=[], views=[ft.View()])
         page.add.side_effect = lambda control: page.controls.append(control)
         auth = Mock(restore=AsyncMock(return_value=result, side_effect=error))
         with (
@@ -86,7 +86,7 @@ class DriveStartupTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(view._skip_button.disabled)
 
     async def test_desktop_does_not_wait_for_unavailable_native_extension(self):
-        page = Mock(platform=ft.PagePlatform.WINDOWS, web=False, controls=[])
+        page = Mock(platform=ft.PagePlatform.WINDOWS, web=False, controls=[], views=[ft.View()])
         auth = Mock(restore=AsyncMock())
         with (
             patch("trail_mania.app.initialize_database"),

@@ -506,7 +506,7 @@ class SessionSelectorsTest(unittest.TestCase):
 
     def test_running_views_preserve_main_and_secondary_forms_across_tabs(self):
         with patch.object(AddSessionView, "update"):
-            page = Mock(platform=ft.PagePlatform.ANDROID, web=False)
+            page = Mock(platform=ft.PagePlatform.ANDROID, web=False, views=[ft.View()])
             with (
                 patch("trail_mania.app.initialize_database"),
                 patch("trail_mania.app.GoogleDriveAuth") as auth,
