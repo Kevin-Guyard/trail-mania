@@ -136,7 +136,7 @@ class IntervalSessionsViewTests(unittest.TestCase):
     def test_format_is_required_and_both_formats_can_be_selected(self):
         self.assertEqual(self.rows(), [])
         self.assertEqual([box.label for box in self.filters.format_choices.values()],
-                         ["Continu", "3 répétitions"])
+                         ["x 1", "x 3"])
         self.select_location()
         self.assertEqual(self.rows(), [])
         self.choose("format", SessionFormat.CONTINUOUS)

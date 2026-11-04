@@ -119,7 +119,7 @@ class VO2maxSessionsViewTests(unittest.TestCase):
 
     def test_required_format_filter_accepts_multiple_formats_and_preserves_date_order(self):
         self.assertEqual([box.label for box in self.filters.format_choices.values()],
-                         ["4 répétitions", "5 répétitions", "6 répétitions"])
+                         ["x 4", "x 5", "x 6"])
         self.assertEqual(self.rows(), [])
         self.location()
         self.assertEqual(self.rows(), [])

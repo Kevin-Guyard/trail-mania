@@ -6,7 +6,7 @@ from typing import Self
 
 import flet as ft
 
-from trail_mania.components.field_layout import field_column
+from trail_mania.components.field_layout import field_label
 from trail_mania.session_records import IntervalSession, RecordedSession
 from trail_mania.session_types import (
     SESSION_FORMATS,
@@ -245,7 +245,7 @@ class SessionFilters(ft.Column):
         """
         return {
             choice: ft.Checkbox(
-                label=choice.label,
+                label=f"x {choice.repetitions or 1}" if isinstance(choice, SessionFormat) else choice.label,
                 value=False,
                 label_style=ft.TextStyle(color=ft.Colors.BLACK),
                 border_side=ft.BorderSide(2, ft.Colors.BLACK),
@@ -272,13 +272,20 @@ class SessionFilters(ft.Column):
         ft.Column
             Heading and centered, horizontally scrollable checkbox row.
         """
-        return field_column(
-            label,
-            ft.Row(
-                scroll=ft.ScrollMode.AUTO,
-                alignment=ft.MainAxisAlignment.CENTER,
-                controls=list(choices.values()),
-            ),
+        heading = field_label(label)
+        heading.size = 15
+        heading.weight = ft.FontWeight.BOLD
+        return ft.Column(
+            tight=True,
+            horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+            controls=[
+                heading,
+                ft.Row(
+                    scroll=ft.ScrollMode.AUTO,
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=list(choices.values()),
+                ),
+            ],
         )
 
     def _on_change(self: Self, event: ft.Event[ft.Checkbox]) -> None:
