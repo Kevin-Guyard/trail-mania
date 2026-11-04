@@ -21,6 +21,9 @@ class ZoneDurationInput(NumericInput):
     between 00 and 59. The public value is integer seconds rather than
     the minutes used by DurationInput. Empty input remains distinguishable
     from a zero duration during required-field validation.
+
+    Three numeric fields keep the colons immutable. Two typed digits advance
+    to the next group; leaving a group pads a single digit with a leading zero.
     """
 
     label: str = "Durée zone"
@@ -40,6 +43,97 @@ class ZoneDurationInput(NumericInput):
         self._value = Decimal("0")
         self._format()
 
+    def _build_value_field(self: Self) -> ft.Column:
+        """Keep separators outside three independently editable numeric fields."""
+        self._parts = [
+            ft.TextField(
+                value="00",
+                hint_text=hint,
+                tooltip=f"{self.label} — {name}",
+                expand=True,
+                keyboard_type=ft.KeyboardType.NUMBER,
+                input_filter=ft.NumbersOnlyInputFilter(),
+                max_length=limit,
+                counter="",
+                text_align=ft.TextAlign.CENTER,
+                text_size=20,
+                color=ft.Colors.BLACK,
+                border=ft.NoInputBorder(),
+                content_padding=ft.Padding.symmetric(horizontal=0, vertical=12),
+                on_focus=self._focus_part,
+                on_change=self._edit_part,
+                on_blur=self._commit_part,
+                on_submit=self._submit_part,
+            )
+            for hint, name, limit in (
+                ("HH", "heures", None),
+                ("MM", "minutes", 2),
+                ("SS", "secondes", 2),
+            )
+        ]
+        self._parts_snapshot = tuple(part.value for part in self._parts)
+        self._error_text = ft.Text(color=ft.Colors.RED, size=12, visible=False)
+        return ft.Column(
+            expand=True,
+            spacing=0,
+            controls=[
+                ft.Row(spacing=0, controls=[
+                    self._parts[0], ft.Text(":", size=20, color=ft.Colors.BLACK),
+                    self._parts[1], ft.Text(":", size=20, color=ft.Colors.BLACK),
+                    self._parts[2],
+                ]),
+                self._error_text,
+            ],
+        )
+
+    def _sync_parts(self: Self) -> None:
+        """Read even pending client edits before validation or dirty checking."""
+        # Retain the shared numeric input's canonical text for parsing and snapshots.
+        parts = tuple(part.value for part in self._parts)
+        if parts != self._parts_snapshot:
+            self._field.value = (
+                ":".join(value.zfill(2) for value in parts) if any(parts) else ""
+            )
+            self._parts_snapshot = parts
+
+    def _show_error(self: Self) -> None:
+        self._error_text.value = self._field.error or ""
+        self._error_text.visible = bool(self._field.error)
+
+    def _read(self: Self) -> bool:
+        valid = super()._read()
+        self._show_error()
+        return valid
+
+    def validate(self: Self, *, required: bool = False) -> bool:
+        valid = super().validate(required=required)
+        self._show_error()
+        return valid
+
+    def _focus_part(self: Self, event: ft.Event[ft.TextField]) -> None:
+        """Select the current group so typing replaces its initial zeroes."""
+        event.control.selection = ft.TextSelection(0, len(event.control.value))
+        self.update()
+
+    async def _edit_part(self: Self, event: ft.Event[ft.TextField]) -> None:
+        self._read()
+        self.update()
+        index = next(i for i, part in enumerate(self._parts) if part is event.control)
+        if len(event.control.value) == 2 and index < 2 and self._field.error is None:
+            await self._parts[index + 1].focus()
+
+    def _commit_part(self: Self, event: ft.Event[ft.TextField]) -> None:
+        """Pad a group immediately when the user moves elsewhere."""
+        event.control.value = event.control.value.zfill(2)
+        self._read()
+        self.update()
+
+    async def _submit_part(self: Self, event: ft.Event[ft.TextField]) -> None:
+        self._commit_part(event)
+        index = next(i for i, part in enumerate(self._parts) if part is event.control)
+        if index < 2:
+            await self._parts[index + 1].focus()
+
     def _parse(self: Self) -> Decimal | None:
         """Parse a strict HH:MM:SS duration into total seconds.
 
@@ -53,6 +147,7 @@ class ZoneDurationInput(NumericInput):
         ValueError
             If hours have fewer than two digits or the time format is invalid.
         """
+        self._sync_parts()
         text = self._field.value.strip()
         if not text:
             return None
@@ -82,10 +177,18 @@ class ZoneDurationInput(NumericInput):
         """
         if self._value is None:
             self._field.value = ""
+            for part in self._parts:
+                part.value = ""
+            self._parts_snapshot = ("", "", "")
+            self._show_error()
             return
         hours, remainder = divmod(int(self._value), 3600)
         minutes, seconds = divmod(remainder, 60)
         self._field.value = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        for part, value in zip(self._parts, self._field.value.split(":")):
+            part.value = value
+        self._parts_snapshot = tuple(part.value for part in self._parts)
+        self._show_error()
 
     @property
     def value(self: Self) -> int | None:

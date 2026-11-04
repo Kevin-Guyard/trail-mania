@@ -115,7 +115,7 @@ class SessionSubmissionTests(unittest.TestCase):
                 else:
                     value = {
                         DistanceInput: "21,3", DurationInput: "2,5" if control.label.endswith("OFF") else "10,5",
-                        ElevationInput: "250", InclinationInput: "-2,5", TemperatureInput: "-3", RPEInput: "7,5",
+                        ElevationInput: "250", InclinationInput: "2,5", TemperatureInput: "-3", RPEInput: "7,5",
                     }[type(control)]
                 control._field.value = value
             elif isinstance(control, WeatherSelector):
@@ -162,7 +162,7 @@ class SessionSubmissionTests(unittest.TestCase):
                                 self.assertEqual(detail.weather, None if terrain == "treadmill" else "Vent & pluie")
                                 self.assertEqual(detail.temperature, None if terrain == "treadmill" else -3)
                                 self.assertEqual(detail.elevation_gain, None if terrain == "treadmill" else 250)
-                                self.assertEqual(detail.inclination, Decimal("-2.5") if terrain == "treadmill" and slope == "hilly" else None)
+                                self.assertEqual(detail.inclination, Decimal("2.5") if terrain == "treadmill" and slope == "hilly" else None)
                                 self.assertEqual(detail.RPE, Decimal("7.5"))
                                 self.assertEqual(detail.comment, "Belle séance\nÀ refaire !")
                                 for index in range(1, 6):
@@ -227,6 +227,16 @@ class SessionSubmissionTests(unittest.TestCase):
                 self.assertIsNotNone(control._field.error)
                 self.assertEqual(self.session_count(), 0)
                 self.assertIs(self.view.content.details_form, form)
+
+    def test_negative_inclination_blocks_submission(self):
+        form = self.make_form("Sortie longue", terrain="treadmill", slope="hilly", movement="run")
+        self.fill_form(form)
+        control = form.inputs["inclination"]
+        control._field.value = "-0,5"
+        button = self.click(form)
+        self.assertFalse(button.disabled)
+        self.assertIsNotNone(control._field.error)
+        self.assertEqual(self.session_count(), 0)
 
     def test_nullable_visible_fields_can_be_left_empty(self):
         form = self.make_form("Sortie longue")

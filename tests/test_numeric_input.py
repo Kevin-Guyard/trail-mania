@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import msgpack
+import flet as ft
 from flet.controls.base_control import BaseControl
 from flet.messaging.protocol import configure_encode_object_for_msgpack
 
@@ -27,7 +28,7 @@ class NumericInputTest(unittest.TestCase):
         row = component.content.controls[1].content
         button = row.controls[2 if direction == 1 else 0]
         with patch.object(NumericInput, "update"):
-            button.on_click(SimpleNamespace(control=button))
+            button.on_tap(SimpleNamespace(control=button))
 
     def test_components_start_empty_and_can_be_sent_to_flet(self):
         for cls in self.classes:
@@ -35,6 +36,7 @@ class NumericInputTest(unittest.TestCase):
                 component = cls()
                 self.assertIsNone(component.value)
                 self.assertEqual(component._field.value, "")
+                self.assertEqual(component._field.keyboard_type, ft.KeyboardType.NUMBER)
                 # Les paramètres Decimal restent côté Python, hors protocole UI.
                 msgpack.packb(
                     component, default=configure_encode_object_for_msgpack(BaseControl)
@@ -71,14 +73,14 @@ class NumericInputTest(unittest.TestCase):
                 self.assertEqual(component.value, 4 * component.step)
 
     def test_negative_values_and_lower_bounds(self):
-        for cls in (DistanceInput, DurationInput, SpeedInput, RPEInput, ElevationInput, HeartRateInput):
+        for cls in (DistanceInput, DurationInput, SpeedInput, RPEInput, ElevationInput, HeartRateInput, InclinationInput):
             component = cls()
             self.click(component, -1)
             self.assertEqual(component.value, component.minimum)
             self.enter(component, "-1")
             self.assertIsNone(component.value)
             self.assertIsNotNone(component._field.error)
-        for cls, expected in ((TemperatureInput, "-1"), (InclinationInput, "-0.5")):
+        for cls, expected in ((TemperatureInput, "-1"),):
             component = cls()
             self.click(component, -1)
             self.assertEqual(component.value, Decimal(expected))
@@ -124,6 +126,18 @@ class NumericInputTest(unittest.TestCase):
         with patch.object(NumericInput, "update"):
             component._field.on_blur(SimpleNamespace(control=component._field))
         self.assertEqual(component._field.value, "12,4")
+
+    def test_inclination_maximum_applies_to_typing_and_buttons(self):
+        component = InclinationInput()
+        for commit in (False, True):
+            self.enter(component, "99,5", commit=commit)
+            self.assertEqual(component.value, Decimal("99.5"))
+            self.click(component, 1)
+            self.assertEqual(component.value, Decimal("99.5"))
+            for text in ("99,6", "100"):
+                self.enter(component, text, commit=commit)
+                self.assertIsNone(component.value)
+                self.assertIsNotNone(component._field.error)
 
 
 if __name__ == "__main__":

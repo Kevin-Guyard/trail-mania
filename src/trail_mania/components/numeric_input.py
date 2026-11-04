@@ -7,6 +7,7 @@ from typing import Literal, Self, cast
 import flet as ft
 
 from trail_mania.components.field_layout import field_column
+from trail_mania.components.repeat_button import RepeatButton
 
 type NumericSnapshot = Decimal | None | tuple[Literal["invalid"], str]
 
@@ -52,15 +53,14 @@ class NumericInput(ft.Container):
         Notes
         -----
         Typing validates without rewriting the text; blur, submit and explicit
-        validation format accepted values. The text keyboard permits signed
-        and decimal input on platforms with limited numeric keyboards.
+        validation format accepted values. The numeric keyboard is requested
+        for all measurements; parsing also accepts signs and decimal separators.
         """
         self._value: Decimal | None = None
         self._field: ft.TextField = ft.TextField(
             value="",
             hint_text="0" if self.decimals == 0 else "0,0",
-            # Text keyboards expose the signs and separators needed for decimal input.
-            keyboard_type=ft.KeyboardType.TEXT,
+            keyboard_type=ft.KeyboardType.NUMBER,
             text_align=ft.TextAlign.CENTER,
             text_size=20,
             color=ft.Colors.BLACK,
@@ -88,18 +88,16 @@ class NumericInput(ft.Container):
             content=ft.Row(
                 vertical_alignment=ft.CrossAxisAlignment.CENTER,
                 controls=[
-                    ft.IconButton(
+                    RepeatButton(
                         icon=ft.Icons.REMOVE,
-                        icon_color=ft.Colors.BLACK,
-                        tooltip=f"Diminuer : {self.label}",
-                        on_click=lambda event: self._adjust(-1),
+                        label=f"Diminuer : {self.label}",
+                        on_step=lambda: self._adjust(-1),
                     ),
                     self._build_value_field(),
-                    ft.IconButton(
+                    RepeatButton(
                         icon=ft.Icons.ADD,
-                        icon_color=ft.Colors.BLACK,
-                        tooltip=f"Augmenter : {self.label}",
-                        on_click=lambda event: self._adjust(1),
+                        label=f"Augmenter : {self.label}",
+                        on_step=lambda: self._adjust(1),
                     ),
                 ],
             ),
@@ -467,18 +465,18 @@ class RPEInput(NumericInput):
 
 @ft.control
 class InclinationInput(NumericInput):
-    """Collect a signed treadmill inclination as a percentage.
+    """Collect a nonnegative treadmill inclination as a percentage.
 
     Notes
     -----
-    Uses half-percentage-point steps and one decimal place. Negative
-    inclinations are accepted; no lower or upper bound is configured.
+    Uses half-percentage-point steps and one decimal place, with a lower
+    bound of zero and an upper bound of 99.5 percent.
     """
 
     label: str = "Inclinaison"
     unit: str = "%"
     step: Decimal = field(default=Decimal("0.5"), metadata={"skip": True})
-    minimum: Decimal | None = field(default=None, metadata={"skip": True})
+    maximum: Decimal | None = field(default=Decimal("99.5"), metadata={"skip": True})
 
 
 @ft.control

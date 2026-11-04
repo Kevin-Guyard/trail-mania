@@ -1,7 +1,8 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
+import flet as ft
 import msgpack
 from flet.controls.base_control import BaseControl
 from flet.messaging.protocol import configure_encode_object_for_msgpack
@@ -20,7 +21,7 @@ class ZoneDurationInputTest(unittest.TestCase):
     def click(self, component, direction):
         buttons = component.content.controls[1].content.controls
         with patch.object(NumericInput, "update"):
-            buttons[2 if direction == 1 else 0].on_click(SimpleNamespace())
+            buttons[2 if direction == 1 else 0].on_tap(SimpleNamespace())
 
     def test_starts_at_zero_and_serializes(self):
         component = ZoneDurationInput(label="Z1")
@@ -69,6 +70,73 @@ class ZoneDurationInputTest(unittest.TestCase):
         self.enter(component, "")
         self.assertIsNone(component.value)
         self.assertIsNone(component._field.error)
+
+
+class SegmentedZoneDurationInputTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.component = ZoneDurationInput(label="Z1")
+        self.enterContext(patch.object(NumericInput, "update"))
+
+    async def edit(self, index, text):
+        part = self.component._parts[index]
+        part.value = text
+        await part.on_change(SimpleNamespace(control=part))
+
+    async def test_typing_advances_hours_then_minutes_then_seconds(self):
+        hours, minutes, seconds = self.component._parts
+        for part in (hours, minutes, seconds):
+            self.assertEqual(part.keyboard_type, ft.KeyboardType.NUMBER)
+            self.assertIsInstance(part.input_filter, ft.NumbersOnlyInputFilter)
+        with patch.object(ft.TextField, "focus", new_callable=AsyncMock) as focus:
+            await self.edit(0, "0")
+            focus.assert_not_awaited()
+            await self.edit(0, "02")
+            self.assertEqual(focus.await_count, 1)
+            await self.edit(1, "09")
+            self.assertEqual(focus.await_count, 2)
+            await self.edit(2, "15")
+            self.assertEqual(focus.await_count, 2)
+        self.assertEqual(self.component.value, 2 * 3600 + 9 * 60 + 15)
+
+    async def test_single_digit_is_padded_when_leaving_each_group(self):
+        component = self.component
+        for index, text in enumerate(("2", "9", "3")):
+            await self.edit(index, text)
+            part = component._parts[index]
+            self.assertEqual(part.value, text)
+            part.on_blur(SimpleNamespace(control=part))
+            self.assertEqual(part.value, text.zfill(2))
+        self.assertEqual(component._field.value, "02:09:03")
+        self.assertEqual(component.value, 7743)
+
+    async def test_save_reads_uncommitted_segments_and_formats_them(self):
+        component = self.component
+        for part, value in zip(component._parts, ("100", "9", "1")):
+            part.value = value
+        self.assertEqual(component.pending_value, 360541)
+        self.assertEqual(component._parts[1].value, "9")
+        self.assertTrue(component.validate(required=True))
+        self.assertEqual([part.value for part in component._parts], ["100", "09", "01"])
+        self.assertEqual(component.value, 360541)
+
+    async def test_invalid_segment_blocks_saving_and_shows_error(self):
+        component = self.component
+        await self.edit(1, "60")
+        self.assertFalse(component.validate())
+        self.assertIsNone(component.value)
+        self.assertTrue(component._error_text.visible)
+        await self.edit(1, "5")
+        self.assertTrue(component.validate())
+        self.assertFalse(component._error_text.visible)
+        self.assertEqual(component.value, 300)
+
+    async def test_submit_pads_group_and_focuses_next(self):
+        part = self.component._parts[1]
+        part.value = "9"
+        with patch.object(ft.TextField, "focus", new_callable=AsyncMock) as focus:
+            await part.on_submit(SimpleNamespace(control=part))
+            focus.assert_awaited_once()
+        self.assertEqual(part.value, "09")
 
 
 if __name__ == "__main__":
