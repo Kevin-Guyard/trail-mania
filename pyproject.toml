@@ -5,6 +5,7 @@ requires-python = ">=3.14"
 dependencies = [
     "flet>=1.0.5",
     "sqlalchemy>=2.1.6",
+    "trail-mania-drive==0.1.0",
 ]
 [dependency-groups]
 dev = [
@@ -19,3 +20,9 @@ product = "TrailMania"
 [tool.flet.app]
 path = "src"
 module = "main"
+
+[tool.uv.sources]
+trail-mania-drive = { path = "extensions/trail-mania-drive" }
+
+[tool.flet.dev_packages]
+trail-mania-drive = "extensions/trail-mania-drive"

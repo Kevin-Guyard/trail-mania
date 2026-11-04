@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
+from pathlib import Path
 from typing import Final, Self, cast
 
 from sqlalchemy import Select, delete, select
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session as DatabaseSession
 from sqlalchemy.orm import joinedload
 
 from trail_mania.database import create_database_engine
+from trail_mania.database_events import notify_database_changed
 from trail_mania.models import (
     DurationSeconds,
     Session,
@@ -497,9 +499,11 @@ def delete_session(session_id: int) -> None:
     engine = create_database_engine()
     try:
         with DatabaseSession(engine) as db, db.begin():
-            db.execute(delete(Session).where(Session.id == session_id))
+            deleted = db.execute(delete(Session).where(Session.id == session_id)).rowcount
     finally:
         engine.dispose()
+    if deleted:
+        notify_database_changed(Path(engine.url.database))
 
 
 def _calendar_description(session_type: SessionType, detail: SessionDetailModel) -> str:
@@ -781,9 +785,10 @@ def update_session(
                     raise ValueError("Le format de la séance ne peut pas être modifié.")
                 record = _record_from_detail(session_type, detail, session_date, session_id)
             db.flush()
-        return record
     finally:
         engine.dispose()
+    notify_database_changed(Path(engine.url.database))
+    return record
 
 
 def create_session(
@@ -842,6 +847,7 @@ def create_session(
                 db.add(model(session=session, **detail_values))
             db.flush()
             session_id = session.id
-        return session_id
     finally:
         engine.dispose()
+    notify_database_changed(Path(engine.url.database))
+    return session_id

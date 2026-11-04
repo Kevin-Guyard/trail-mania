@@ -1,0 +1,16 @@
+name: trail_mania_drive
+description: Native Google Drive authorization and secure session storage for Trail Mania.
+version: 0.1.0
+publish_to: none
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  flet: ^1.0.5
+  google_sign_in: ^7.2.0
+  flutter_secure_storage: ^10.3.4
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  google_sign_in_platform_interface: ^3.1.0

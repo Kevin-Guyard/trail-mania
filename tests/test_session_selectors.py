@@ -1,8 +1,9 @@
+import asyncio
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import Mock, PropertyMock, patch
+from unittest.mock import AsyncMock, Mock, PropertyMock, patch
 
 import flet as ft
 import msgpack
@@ -505,9 +506,13 @@ class SessionSelectorsTest(unittest.TestCase):
 
     def test_running_views_preserve_main_and_secondary_forms_across_tabs(self):
         with patch.object(AddSessionView, "update"):
-            page = Mock()
-            with patch("trail_mania.app.initialize_database"):
-                create_app(page)
+            page = Mock(platform=ft.PagePlatform.ANDROID, web=False)
+            with (
+                patch("trail_mania.app.initialize_database"),
+                patch("trail_mania.app.GoogleDriveAuth") as auth,
+            ):
+                auth.return_value.restore = AsyncMock(return_value={"status": "connected"})
+                asyncio.run(create_app(page))
             container = page.add.call_args.args[0].content
             nav = page.navigation_bar
 

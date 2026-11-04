@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trail-mania-drive"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = ["flet>=1.0.5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["trail_mania_drive", "flutter", "flutter.trail_mania_drive"]
+
+[tool.setuptools.package-data]
+"flutter.trail_mania_drive" = ["pubspec.yaml", "lib/*.dart"]

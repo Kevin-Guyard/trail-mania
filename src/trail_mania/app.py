@@ -3,9 +3,12 @@
 from collections.abc import Sequence
 
 import flet as ft
+from trail_mania_drive import GoogleDriveAuth
 
+from trail_mania.automatic_backup import AutomaticDriveBackup
 from trail_mania.database import initialize_database
 from trail_mania.views import AddSessionView, CalendarView, SessionsView, StatisticsView
+from trail_mania.views.google_drive_view import GoogleDriveView
 
 
 def change_page(
@@ -41,10 +44,10 @@ def change_page(
     page.update()
 
 
-def create_app(
+async def create_app(
         page: ft.Page
 ) -> None:
-    """Initialize storage and mount the application's persistent tab views.
+    """Restore Drive authorization before mounting the application tabs.
 
     Parameters
     ----------
@@ -61,14 +64,60 @@ def create_app(
 
     Notes
     -----
-    The calendar is displayed first. The session browser starts at its type
-    picker and defers loading measurements until a type is selected.
+    Without saved Drive authorization, show the connection screen. Otherwise
+    open the calendar. Continuing without Drive does not persist a connection.
     """
     initialize_database()
 
     page.title = "Trail Mania"
     page.padding = 0
     page.bgcolor = "#F5F5F5"
+
+    auth = GoogleDriveAuth()
+    # Keep the service available for future backup operations.
+    page.session.store.set("drive_auth", auth)
+    backups = AutomaticDriveBackup(page, auth)
+    page.session.store.set("drive_backups", backups)
+    ft.Connectivity(on_change=backups.connectivity_changed)
+    page.on_app_lifecycle_state_change = backups.lifecycle_changed
+    page.on_close = backups.close
+    page.add(ft.SafeArea(
+        expand=True,
+        content=ft.Column(
+            controls=[ft.ProgressRing(), ft.Text("Ouverture de Trail Mania…")],
+            alignment=ft.MainAxisAlignment.CENTER,
+            horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+        ),
+    ))
+    connection_view = GoogleDriveView(
+        auth, lambda: _show_main_views(page), on_connected=backups.connected,
+    )
+    try:
+        result = (
+            await auth.restore()
+            if page.platform == ft.PagePlatform.ANDROID and not page.web
+            else {"status": "unsupported"}
+        )
+    except Exception:
+        result = {"status": "error"}
+    if result.get("status") == "connected":
+        backups.enable()
+        _show_main_views(page)
+    else:
+        page.controls.clear()
+        page.navigation_bar = None
+        page.add(ft.SafeArea(expand=True, content=connection_view))
+        if result.get("status") == "error":
+            connection_view.show_error(
+                "La connexion enregistrée n’a pas pu être lue. Tu peux réessayer ou continuer sans connexion."
+            )
+        elif result.get("status") == "unsupported":
+            connection_view.show_unavailable()
+
+
+def _show_main_views(page: ft.Page) -> None:
+    """Mount tabs after connecting, restoring, or choosing to continue offline."""
+    page.controls.clear()
 
     views: list[ft.Control] = [CalendarView(), SessionsView(), StatisticsView(), AddSessionView()]
 
