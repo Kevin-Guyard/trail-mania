@@ -13,6 +13,9 @@ dev = [
     "flet-web>=1.0.5",
 ]
 
+[tool.flet]
+product = "TrailMania"
+
 [tool.flet.app]
 path = "src"
 module = "main"
