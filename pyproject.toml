@@ -6,12 +6,13 @@ dependencies = [
     "flet>=1.0.5",
     "sqlalchemy>=2.1.6",
 ]
-path = "src"
-module = "main"
-
 [dependency-groups]
 dev = [
     "flet-cli>=1.0.5",
     "flet-desktop>=1.0.5",
     "flet-web>=1.0.5",
 ]
+
+[tool.flet.app]
+path = "src"
+module = "main"
