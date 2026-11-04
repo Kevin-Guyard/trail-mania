@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Final, Self, cast
 
-from sqlalchemy import delete, select
+from sqlalchemy import Select, delete, select
 from sqlalchemy.orm import Session as DatabaseSession
 from sqlalchemy.orm import joinedload
 
@@ -263,6 +263,92 @@ def get_sessions(session_type: SessionType | str) -> list[RunningSession]:
         engine.dispose()
 
 
+def _sessions_between_query(start: date, end: date) -> Select[tuple[Session]]:
+    """Build a date-range query with eagerly loaded running details.
+
+    Parameters
+    ----------
+    start : datetime.date
+        First included calendar date.
+    end : datetime.date
+        Last included calendar date.
+
+    Returns
+    -------
+    sqlalchemy.Select
+        Session selection ordered by date then identity, with all optional
+        one-to-one detail relationships loaded through outer joins.
+
+    Notes
+    -----
+    Building the query does not open a connection or execute SQL. Calendar
+    and statistics readers share it to preserve duplicates and avoid extra
+    queries while projecting each session's measurements.
+    """
+    return (
+        select(Session)
+        .options(*(
+            joinedload(getattr(Session, name))
+            for name in _DETAIL_RELATIONSHIPS.values()
+        ))
+        .where(Session.date.between(start, end))
+        .order_by(Session.date, Session.id)
+    )
+
+
+def get_running_sessions_between(start: date, end: date) -> list[tuple[SessionType, RunningSession]]:
+    """Read running families and their measurements for an inclusive date range.
+
+    Parameters
+    ----------
+    start : datetime.date
+        First included calendar date.
+    end : datetime.date
+        Last included calendar date.
+
+    Returns
+    -------
+    list of (SessionType, RunningSession)
+        Running-family and immutable-record pairs ordered by date then
+        identity. Duplicate sessions and zero-valued measurements are
+        retained. Strength sessions and running sessions without details
+        are excluded. No matches yields an empty list.
+
+    Raises
+    ------
+    sqlalchemy.exc.SQLAlchemyError
+        If the query or stored-value conversion fails.
+    OSError
+        If the database storage directory cannot be accessed or created.
+
+    Notes
+    -----
+    The caller initializes storage before reading. One query loads all running
+    families without preparing calendar descriptions or grouping records by
+    date. The database session closes and its engine is disposed on every
+    path; returned records retain no ORM objects.
+    """
+    engine = create_database_engine()
+    try:
+        with DatabaseSession(engine) as db:
+            rows = db.scalars(
+                _sessions_between_query(start, end)
+                .where(Session.session_type != SessionType.LEG_STRENGTH)
+            )
+            sessions: list[tuple[SessionType, RunningSession]] = []
+            for session in rows:
+                session_type = SessionType(session.session_type)
+                detail = cast(SessionDetailModel | None, getattr(session, _DETAIL_RELATIONSHIPS[session_type]))
+                if detail is not None:
+                    sessions.append((
+                        session_type,
+                        _record_from_detail(session_type, detail, session.date, session.id),
+                    ))
+            return sessions
+    finally:
+        engine.dispose()
+
+
 def get_calendar_sessions_by_date(start: date, end: date) -> dict[date, list[CalendarSession]]:
     """Read calendar descriptions and session measurements in one query.
 
@@ -296,15 +382,7 @@ def get_calendar_sessions_by_date(start: date, end: date) -> dict[date, list[Cal
     engine = create_database_engine()
     try:
         with DatabaseSession(engine) as db:
-            rows = db.scalars(
-                select(Session)
-                .options(*(
-                    joinedload(getattr(Session, name))
-                    for name in _DETAIL_RELATIONSHIPS.values()
-                ))
-                .where(Session.date.between(start, end))
-                .order_by(Session.date, Session.id)
-            )
+            rows = db.scalars(_sessions_between_query(start, end))
             sessions: dict[date, list[CalendarSession]] = {}
             for session in rows:
                 session_type = SessionType(session.session_type)

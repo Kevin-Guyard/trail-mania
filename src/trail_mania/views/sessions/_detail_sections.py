@@ -8,9 +8,27 @@ from trail_mania.components.elevation_selector import slope_icon
 from trail_mania.components.movement_selector import movement_icon
 from trail_mania.components.terrain_selector import terrain_icon
 from trail_mania.components.weather_selector import weather_icon
-from trail_mania.session_records import EnduranceSession, RecordedSession, SessionRecord, StrengthSession
-from trail_mania.session_types import SESSION_FORMATS, LabeledChoice, Movement, Slope, Terrain, Weather
-from trail_mania.views.sessions._formatting import MISSING, Measurement, format_measurement, measurement_text, text
+from trail_mania.session_records import (
+    EnduranceSession,
+    RecordedSession,
+    SessionRecord,
+    StrengthSession,
+)
+from trail_mania.session_types import (
+    SESSION_FORMATS,
+    LabeledChoice,
+    Movement,
+    Slope,
+    Terrain,
+    Weather,
+)
+from trail_mania.views._formatting import (
+    MISSING,
+    Measurement,
+    format_measurement,
+    measurement_text,
+    text,
+)
 
 type DetailRows = list[tuple[str, ft.Control]]
 

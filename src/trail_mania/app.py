@@ -29,13 +29,13 @@ def change_page(
 
     Notes
     -----
-    Calendar and session views refresh before being displayed. View instances
+    Calendar, session and statistics views refresh before display. View instances
     are retained across tab changes, preserving their navigation and filters.
     One page update sends the refreshed content after the switch.
     """
     index = event.control.selected_index
     view = views[index]
-    if isinstance(view, (CalendarView, SessionsView)):
+    if isinstance(view, (CalendarView, SessionsView, StatisticsView)):
         view.refresh()
     views_container.content = view
     page.update()

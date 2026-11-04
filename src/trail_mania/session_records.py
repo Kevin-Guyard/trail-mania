@@ -15,6 +15,31 @@ from trail_mania.session_types import (
 )
 
 
+def calculate_zone_percentages(durations: tuple[timedelta, ...]) -> tuple[float | None, ...]:
+    """Return unrounded time shares, or absent shares when no time was recorded.
+
+    Parameters
+    ----------
+    durations : tuple of datetime.timedelta
+        Nonnegative recorded zone durations, in their desired output order.
+        Session records and statistics supply five entries, from Z1 to Z5.
+
+    Returns
+    -------
+    tuple of float or None
+        One unrounded percentage per input duration. Every entry is None
+        when the sum of recorded durations is zero.
+
+    Notes
+    -----
+    Timedelta division includes whole days. Individual sessions and cumulative
+    statistics share this calculation, using total zone time as the denominator
+    rather than effort time. Output formatting is left to the views.
+    """
+    total = sum(durations, timedelta(0))
+    return tuple(duration / total * 100 if total else None for duration in durations)
+
+
 @dataclass(frozen=True)
 class StrengthSession:
     """Store a strength date and its optional persistent identity.
@@ -106,6 +131,18 @@ class RecordedSession:
         """
         return self.terrain == Terrain.TREADMILL.label and self.slope == Slope.HILLY.label
 
+    @property
+    def zone_durations(self: Self) -> tuple[timedelta, ...]:
+        """Return recorded heart-rate zone times in Z1-to-Z5 order.
+
+        Returns
+        -------
+        tuple of datetime.timedelta
+            The five recorded zone durations, including whole days and
+            zero-valued zones, without conversion or rounding.
+        """
+        return self.z1, self.z2, self.z3, self.z4, self.z5
+
     @cached_property
     def zone_percentages(self: Self) -> tuple[float | None, ...]:
         """Calculate each zone's share of total recorded zone duration.
@@ -121,9 +158,7 @@ class RecordedSession:
         Timedelta division includes whole days. The result is cached for this
         immutable record; display rounding is left to the column renderer.
         """
-        zones = (self.z1, self.z2, self.z3, self.z4, self.z5)
-        total = sum(zones, timedelta(0))
-        return tuple(zone / total * 100 if total else None for zone in zones)
+        return calculate_zone_percentages(self.zone_durations)
 
 
 @dataclass(frozen=True)

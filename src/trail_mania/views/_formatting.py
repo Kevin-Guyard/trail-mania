@@ -1,4 +1,4 @@
-"""Measurement formatting shared by session tables and details."""
+"""French measurement formatting shared by session and statistics views."""
 
 from decimal import Decimal
 from typing import Final
@@ -10,8 +10,49 @@ type Measurement = Decimal | float | int | None
 MISSING: Final[str] = "—"
 
 
+def format_duration(total_seconds: Decimal) -> str:
+    """Round cumulative seconds and display a duration without a 24-hour limit.
+
+    Parameters
+    ----------
+    total_seconds : Decimal
+        Nonnegative effort duration in seconds, including any fractional part.
+
+    Returns
+    -------
+    str
+        Duration in HH:MM:SS format. Hours have at least two digits and may
+        exceed 23; minutes and seconds are padded to two digits.
+
+    Notes
+    -----
+    Rounding to whole seconds follows the active decimal context. Callers
+    supply cumulative durations so rounding occurs after aggregation.
+    """
+    hours, remainder = divmod(int(total_seconds.to_integral_value()), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def format_percentage(value: float | None) -> str:
+    """Format a whole percentage or an undefined-share placeholder.
+
+    Parameters
+    ----------
+    value : float or None
+        Unrounded percentage, or None when total recorded zone time is zero.
+
+    Returns
+    -------
+    str
+        Percentage rounded to a whole number followed by a percent sign.
+        None yields an em dash; zero remains a displayed percentage.
+    """
+    return f"{value:.0f} %" if value is not None else MISSING
+
+
 def format_measurement(value: Measurement, unit: str = "") -> str:
-    """Format a stored measurement for French session displays.
+    """Format a stored measurement for French measurement displays.
 
     Parameters
     ----------

@@ -20,8 +20,12 @@ from trail_mania.session_types import (
     Terrain,
     Weather,
 )
-from trail_mania.views.sessions._formatting import (
-    MISSING, Measurement, measurement_text, text,
+from trail_mania.views._formatting import (
+    MISSING,
+    Measurement,
+    format_percentage,
+    measurement_text,
+    text,
 )
 
 
@@ -229,7 +233,7 @@ def _zone_column(index: int) -> SessionColumn:
             Whole percentage or an em dash when total duration is zero.
         """
         percentage = session.zone_percentages[index - 1]
-        return text(f"{percentage:.0f} %" if percentage is not None else MISSING)
+        return text(format_percentage(percentage))
 
     return SessionColumn(f"% Z{index}", 65, render, "999 %")
 

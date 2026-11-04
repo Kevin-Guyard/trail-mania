@@ -9,6 +9,11 @@ from typing import Final, Literal, Self
 import flet as ft
 
 from trail_mania.session_repository import CalendarSession, get_calendar_sessions_by_date
+from trail_mania.views._period_controls import (
+    MONTH_NAMES as _MONTH_NAMES,
+    build_period_header,
+    build_period_selector,
+)
 from trail_mania.views.calendar._calendar_cells import (
     CELL_SPACING,
     WEEKDAY_NAMES,
@@ -20,10 +25,6 @@ from trail_mania.views.calendar._calendar_pager import CalendarPager
 from trail_mania.views.sessions._session_navigation import SessionNavigation
 
 
-_MONTH_NAMES: Final[tuple[str, ...]] = (
-    "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
-    "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre",
-)
 _MONTH_WEEK_SLOTS: Final[int] = 6
 
 # (calendar year, month) or (ISO year, week), depending on the view.
@@ -144,41 +145,8 @@ class CalendarView(ft.Container):
         self.update()
 
     def _build_selector(self: Self) -> ft.Row:
-        """Build the centered month/week selector.
-
-        Returns
-        -------
-        ft.Row
-            A row containing a segmented button with exactly one selected view.
-        """
-        return ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
-            vertical_alignment=ft.CrossAxisAlignment.START,
-            controls=[
-                ft.SegmentedButton(
-                    selected=["month"],
-                    allow_empty_selection=False,
-                    allow_multiple_selection=False,
-                    show_selected_icon=False,
-                    on_change=self._on_view_change,
-                    style=ft.ButtonStyle(
-                        shape=ft.StadiumBorder(),
-                        bgcolor={
-                            ft.ControlState.SELECTED: ft.Colors.PRIMARY_CONTAINER,
-                            ft.ControlState.DEFAULT: ft.Colors.SURFACE,
-                        },
-                        color={
-                            ft.ControlState.SELECTED: ft.Colors.ON_PRIMARY_CONTAINER,
-                            ft.ControlState.DEFAULT: ft.Colors.ON_SURFACE,
-                        },
-                    ),
-                    segments=[
-                        ft.Segment(value="month", label="Mois"),
-                        ft.Segment(value="week", label="Semaine"),
-                    ],
-                ),
-            ],
-        )
+        """Build the shared centered month/week selector."""
+        return build_period_selector(self._on_view_change)
 
     def _build_month_view(self: Self) -> ft.Column:
         """Build the header and pager for the selected month.
@@ -289,61 +257,9 @@ class CalendarView(ft.Container):
         next_tooltip: str,
         on_change: Callable[[int], None],
     ) -> ft.Row:
-        """Build a period title between two fixed-position navigation arrows.
-
-        Parameters
-        ----------
-        title : str
-            Visible title of the selected period.
-        reference_title : str
-            Invisible text defining the width of the title area.
-        previous_tooltip : str
-            Tooltip for the left arrow.
-        next_tooltip : str
-            Tooltip for the right arrow.
-        on_change : callable
-            Receive -1 for the previous period or 1 for the next period.
-
-        Returns
-        -------
-        ft.Row
-            A centered title and arrows that apply navigation immediately.
-        """
-        title_style = ft.TextStyle(
-            size=24,
-            weight=ft.FontWeight.W_600,
-            color=ft.Colors.BLACK,
-        )
-        return ft.Row(
-            alignment=ft.MainAxisAlignment.CENTER,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                ft.IconButton(
-                    icon=ft.Icons.CHEVRON_LEFT,
-                    icon_color=ft.Colors.BLACK,
-                    tooltip=previous_tooltip,
-                    on_click=lambda event: on_change(-1),
-                ),
-                ft.Stack(
-                    alignment=ft.Alignment.CENTER,
-                    controls=[
-                        # Reserve a fixed title width so the arrows do not move.
-                        ft.Text(
-                            reference_title,
-                            style=title_style,
-                            no_wrap=True,
-                            opacity=0,
-                        ),
-                        ft.Text(title, style=title_style, no_wrap=True),
-                    ],
-                ),
-                ft.IconButton(
-                    icon=ft.Icons.CHEVRON_RIGHT,
-                    icon_color=ft.Colors.BLACK,
-                    tooltip=next_tooltip,
-                    on_click=lambda event: on_change(1),
-                ),
-            ],
+        """Build the shared title and fixed-position navigation arrows."""
+        return build_period_header(
+            title, reference_title, previous_tooltip, next_tooltip, on_change,
         )
 
     def _build_month_calendar(self: Self, period: Period) -> ft.Column:
