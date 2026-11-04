@@ -202,6 +202,32 @@ class SessionFilters(ft.Column):
         """
         return frozenset(choice.label for choice, box in choices.items() if box.value)
 
+    def restore(self: Self, selection: FilterSelection) -> None:
+        """Restore saved choices into fresh controls without emitting an update.
+
+        Parameters
+        ----------
+        selection : FilterSelection
+            Persisted-label and format selections to apply to this family's
+            available checkboxes, including currently hidden movement choices.
+
+        Notes
+        -----
+        Movement visibility is recomputed after restoration. Unsupported
+        choices have no corresponding checkbox and are ignored. This method
+        neither invokes ``on_change`` nor filters or reloads any records.
+        """
+        for choices, selected in (
+            (self.terrain_choices, selection.terrains),
+            (self.slope_choices, selection.slopes),
+            (self.movement_choices, selection.movements),
+        ):
+            for choice, checkbox in choices.items():
+                checkbox.value = choice.label in selected
+        for choice, checkbox in self.format_choices.items():
+            checkbox.value = choice in selection.formats
+        self.movement_field.visible = self.selection.requires_movement
+
     def _choices[Choice: LabeledChoice](
         self: Self, choices: Iterable[Choice],
     ) -> dict[Choice, ft.Checkbox]:

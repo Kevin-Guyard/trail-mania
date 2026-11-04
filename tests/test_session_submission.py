@@ -21,7 +21,7 @@ from trail_mania.components import (
 from trail_mania.components.numeric_input import NumericInput
 from trail_mania.database import create_database_engine, initialize_database
 from trail_mania.models import Base, Session, SessionSortieLongue
-from trail_mania.session_repository import DETAIL_MODELS, get_calendar_sessions_by_date
+from trail_mania.session_repository import DETAIL_MODELS, get_calendar_sessions_by_date, get_sessions
 from trail_mania.views.add_session._session_form import SessionForm
 from trail_mania.views.add_session import AddSessionView
 
@@ -60,6 +60,7 @@ class SessionSubmissionTests(unittest.TestCase):
                         expected += f" - x{repetitions or 1}"
                     self.assertEqual(last.session_type, title)
                     self.assertEqual(last.description, expected)
+                    self.assertEqual(last.record, get_sessions(title)[0])
         self.assertEqual(get_calendar_sessions_by_date(date(2020, 1, 1), date(2020, 1, 7)), {})
 
     def setUp(self):

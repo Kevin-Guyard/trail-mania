@@ -1,6 +1,6 @@
 """A measured table whose filters scroll away before its header sticks."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import field
 from functools import partial
 from math import ceil
@@ -8,7 +8,7 @@ from typing import Final, Self, cast
 
 import flet as ft
 
-from trail_mania.session_records import RecordedSession
+from trail_mania.session_records import RunningSession
 from trail_mania.session_types import SessionType
 from trail_mania.views.sessions._columns import SessionColumn, columns_for
 
@@ -31,6 +31,9 @@ class SessionTable(ft.Column):
         Control displayed above the table and included in vertical scrolling.
         Defaults to None. It remains reachable through the rendered control
         tree despite being excluded as a separate serialized field.
+    on_open_detail : callable or None, optional
+        Callback receiving the row's running record on selection. Defaults to
+        None, leaving rows without a navigation action.
 
     Notes
     -----
@@ -42,6 +45,7 @@ class SessionTable(ft.Column):
 
     session_type: SessionType = field(default=SessionType.EASY_RUN, metadata={"skip": True})
     filters: ft.Control | None = field(default=None, metadata={"skip": True})
+    on_open_detail: Callable[[RunningSession], None] | None = field(default=None, metadata={"skip": True})
 
     def init(self: Self) -> None:
         """Construct the empty tables, viewports and width-measurement probes.
@@ -102,12 +106,12 @@ class SessionTable(ft.Column):
         self._column_measurements: ft.Container = self._build_measurements()
         self.controls = [self._rows_viewport, self._column_measurements]
 
-    def show_sessions(self: Self, sessions: Iterable[RecordedSession], empty_message: str) -> None:
+    def show_sessions(self: Self, sessions: Iterable[RunningSession], empty_message: str) -> None:
         """Replace displayed rows and update the empty-state message.
 
         Parameters
         ----------
-        sessions : iterable of RecordedSession
+        sessions : iterable of RunningSession
             Matching records compatible with this table's family. The iterable
             is consumed once and its order is preserved.
         empty_message : str
@@ -120,7 +124,9 @@ class SessionTable(ft.Column):
         arrive. The owner sends the client update after this method returns.
         """
         self._table.rows = [
-            ft.DataRow(cells=[
+            ft.DataRow(on_select_change=(
+                lambda event, record=session: self.on_open_detail(record)
+            ) if self.on_open_detail is not None else None, cells=[
                 column.cell(session, width)
                 for column, width in zip(self._columns, self._column_widths, strict=True)
             ])
@@ -162,6 +168,7 @@ class SessionTable(ft.Column):
             Empty table using fixed row heights and current column widths.
         """
         return ft.DataTable(
+            show_checkbox_column=False,
             width=self._table_width(),
             columns=[
                 ft.DataColumn(ft.Text(

@@ -2,11 +2,13 @@
 
 from dataclasses import field
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import Self
+from typing import Literal, Self, cast
 
 import flet as ft
 
 from trail_mania.components.field_layout import field_column
+
+type NumericSnapshot = Decimal | None | tuple[Literal["invalid"], str]
 
 
 @ft.control
@@ -34,6 +36,7 @@ class NumericInput(ft.Container):
     separators; formatting uses commas. Values round to the configured
     step with ROUND_HALF_UP. Python-only Decimal settings are excluded
     from Flet serialization. Subclasses may customize parsing and display.
+    Prefilled float measurements may extend the precision beyond these defaults.
     """
 
     label: str = ""
@@ -56,7 +59,7 @@ class NumericInput(ft.Container):
         self._field: ft.TextField = ft.TextField(
             value="",
             hint_text="0" if self.decimals == 0 else "0,0",
-            # Flet's numeric keyboard lacks a decimal separator and sign on iOS.
+            # Text keyboards expose the signs and separators needed for decimal input.
             keyboard_type=ft.KeyboardType.TEXT,
             text_align=ft.TextAlign.CENTER,
             text_size=20,
@@ -318,6 +321,55 @@ class NumericInput(ft.Container):
         saving to include client edits not yet processed by another event.
         """
         return self._value
+
+    def set_value(self: Self, value: Decimal | float | int | None) -> None:
+        """Prefill a stored number while preserving float measurement precision.
+
+        Parameters
+        ----------
+        value : Decimal, float, int or None
+            Validated finite measurement, or None to clear the field. Duration
+            subclasses receive whole seconds.
+
+        Notes
+        -----
+        Conversion uses the value's decimal spelling. A float may increase
+        display precision and reduce the step to retain stored interval-speed
+        digits. Other numbers keep the configured precision. Validation
+        errors are cleared and text is formatted, without emitting an update
+        or revalidating bounds.
+        """
+        self._value = Decimal(str(value)) if value is not None else None
+        # Stored interval speeds may be more precise than new-entry defaults.
+        if isinstance(value, float):
+            stored_value = cast(Decimal, self._value)
+            precision = max(self.decimals, -cast(int, stored_value.as_tuple().exponent))
+            self.decimals = precision
+            self.step = min(self.step, Decimal(1).scaleb(-precision))
+        self._field.error = None
+        self._format()
+
+    @property
+    def pending_value(self: Self) -> NumericSnapshot:
+        """Read a comparison value without changing text or validation state.
+
+        Returns
+        -------
+        NumericSnapshot
+            Normalized Decimal for valid input, None for empty text, or
+            ``("invalid", raw_text)`` when parsing or normalization fails.
+
+        Notes
+        -----
+        This property rereads client text without updating the cached value,
+        error message or display. It supports dirty-state comparisons before
+        blur and treats equivalent valid number spellings as equal.
+        """
+        try:
+            value = self._parse()
+            return self._normalize(value) if value is not None else None
+        except (InvalidOperation, ValueError):
+            return ("invalid", self._field.value)
 
 
 @ft.control

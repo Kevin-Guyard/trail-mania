@@ -1,3 +1,5 @@
+"""Coordinate calendar swipes and reject events from inactive period grids."""
+
 from collections.abc import Callable
 from typing import Final, Self
 
@@ -48,7 +50,14 @@ class CalendarPager:
         on_change: Callable[[int], None],
         on_update: Callable[[], None],
     ) -> None:
-        """Initialize gesture state and wrap the three supplied calendar grids."""
+        """Initialize gesture state and wrap the three supplied calendar grids.
+
+        Notes
+        -----
+        Constructor parameters are documented on the class. Existing grids
+        are mounted into the pager without rebuilding them or querying data.
+        The owner installs ``control`` and sends the initial client update.
+        """
         self.viewport_width: float = viewport_width
         self._spacing: float = spacing
         self._on_change: Callable[[int], None] = on_change
@@ -88,7 +97,15 @@ class CalendarPager:
         )
 
     def deactivate(self: Self) -> None:
-        """Stop accepting gestures and animation events from a replaced pager."""
+        """Stop accepting events while a detail is open or the pager is replaced.
+
+        Notes
+        -----
+        Gesture, resize and animation-completion handlers check this flag
+        before changing offsets or requesting another period. Deactivation
+        does not mutate the grids or send an update; returning to the calendar
+        constructs a fresh active pager.
+        """
         self._active = False
 
     def _resize_viewport(

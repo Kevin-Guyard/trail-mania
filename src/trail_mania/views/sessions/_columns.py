@@ -2,7 +2,6 @@
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from decimal import Decimal
 from typing import Final, Self, cast
 
 import flet as ft
@@ -21,48 +20,9 @@ from trail_mania.session_types import (
     Terrain,
     Weather,
 )
-
-type Measurement = Decimal | float | None
-
-_MISSING: Final[str] = "—"
-
-
-def _text(value: str) -> ft.Text:
-    """Create text using the table's foreground color.
-
-    Parameters
-    ----------
-    value : str
-        Formatted cell value, including any unit or missing-value marker.
-
-    Returns
-    -------
-    ft.Text
-        Fresh black text inheriting the table's text style.
-    """
-    return ft.Text(value, color=ft.Colors.BLACK)
-
-
-def _measurement(value: Measurement, unit: str) -> ft.Text:
-    """Format a measurement with a French decimal separator and optional unit.
-
-    Parameters
-    ----------
-    value : Decimal, float, int or None
-        Stored measurement. Integers keep their precision; Decimal and float
-        values are displayed with one decimal place. None denotes missing data.
-    unit : str
-        Unit appended after a space; an empty string omits the unit.
-
-    Returns
-    -------
-    ft.Text
-        Formatted measurement or an em dash for missing data. Zero is preserved.
-    """
-    if value is None:
-        return _text(_MISSING)
-    number = format(value, ".1f") if isinstance(value, (Decimal, float)) else str(value)
-    return _text(f"{number.replace('.', ',')} {unit}".rstrip())
+from trail_mania.views.sessions._formatting import (
+    MISSING, Measurement, measurement_text, text,
+)
 
 
 @dataclass(frozen=True)
@@ -116,7 +76,7 @@ class SessionColumn:
         """
         content = self.render(session)
         alignment = self.alignment
-        if self.center_missing and isinstance(content, ft.Text) and content.value == _MISSING:
+        if self.center_missing and isinstance(content, ft.Text) and content.value == MISSING:
             alignment = ft.Alignment.CENTER
         return ft.DataCell(ft.Container(width=width, alignment=alignment, content=content))
 
@@ -181,7 +141,7 @@ def _measure_column(
             value: Measurement = values[repetition] if repetition < len(values) else None
         else:
             value = cast(Measurement, getattr(session, attribute))
-        return _measurement(value, unit)
+        return measurement_text(value, unit)
 
     return SessionColumn(label, width, render, sample, center_missing=center_missing)
 
@@ -237,7 +197,7 @@ def _icon_column[Choice: LabeledChoice](
         if attribute == "movement" and not session.requires_movement:
             value = None
         choice = by_label.get(value)
-        return icon(choice) if choice is not None else _text(_MISSING)
+        return icon(choice) if choice is not None else text(MISSING)
 
     return SessionColumn(label, width, render, alignment=ft.Alignment.CENTER)
 
@@ -269,7 +229,7 @@ def _zone_column(index: int) -> SessionColumn:
             Whole percentage or an em dash when total duration is zero.
         """
         percentage = session.zone_percentages[index - 1]
-        return _text(f"{percentage:.0f} %" if percentage is not None else _MISSING)
+        return text(f"{percentage:.0f} %" if percentage is not None else MISSING)
 
     return SessionColumn(f"% Z{index}", 65, render, "999 %")
 
@@ -289,7 +249,7 @@ def _comment(session: RecordedSession) -> ft.Text:
         comment in a tooltip. Empty comments display an em dash.
     """
     return ft.Text(
-        session.comment or _MISSING,
+        session.comment or MISSING,
         color=ft.Colors.BLACK,
         max_lines=2,
         overflow=ft.TextOverflow.ELLIPSIS,
@@ -310,7 +270,7 @@ def _date(session: RecordedSession) -> ft.Text:
     ft.Text
         Date formatted as ``DD/MM/YYYY``.
     """
-    return _text(session.date.strftime("%d/%m/%Y"))
+    return text(session.date.strftime("%d/%m/%Y"))
 
 
 def _format(session: RecordedSession) -> ft.Text:
@@ -331,7 +291,7 @@ def _format(session: RecordedSession) -> ft.Text:
     The callable accepts the common record type to share the column interface;
     the interval schema guarantees the concrete subtype at runtime.
     """
-    return _text(f"x{cast(IntervalSession, session).session_format.repetitions or 1}")
+    return text(f"x{cast(IntervalSession, session).session_format.repetitions or 1}")
 
 
 _LOCATION_COLUMNS: Final[tuple[SessionColumn, ...]] = (

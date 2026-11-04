@@ -2,8 +2,9 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
-from typing import Self
+from datetime import date, timedelta
+from decimal import Decimal
+from typing import Self, cast
 
 import flet as ft
 
@@ -22,11 +23,14 @@ from trail_mania.components import (
     WeatherSelector,
     ZoneDurationInput,
 )
-from trail_mania.session_repository import get_detail_fields
-from trail_mania.session_types import SessionDetailValues, SessionType, Slope
+from trail_mania.components.numeric_input import NumericSnapshot
+from trail_mania.session_records import SessionRecord, StrengthSession, validate_session_type
+from trail_mania.session_repository import get_detail_fields, session_detail_values
+from trail_mania.session_types import SessionDetailValues, SessionType, Slope, Weather
 from trail_mania.views.add_session._configuration import SessionConfiguration
 
 type SessionInput = NumericInput | CommentsInput | WeatherSelector
+type SessionEditState = tuple[date, tuple[tuple[str, NumericSnapshot | str], ...]]
 
 
 @dataclass(frozen=True)
@@ -65,11 +69,15 @@ class SessionDetailsForm(ft.Column):
         Matching running configuration, or None for strength sessions.
     on_submit : callable or None, optional
         Callback receiving this form when its submit button is clicked.
+    initial_session : SessionRecord or None, optional
+        Stored measurements to prefill and preserve, including hidden values.
+        Also selects the save button label and layout used for editing.
 
     Raises
     ------
     ValueError
-        If the session type and configuration do not match.
+        If the session type and configuration do not match, or the initial
+        record has incompatible measurements.
 
     Attributes
     ----------
@@ -86,6 +94,7 @@ class SessionDetailsForm(ft.Column):
         metadata={"skip": True},
     )
     configuration: SessionConfiguration | None = field(default=None, metadata={"skip": True})
+    initial_session: SessionRecord | None = field(default=None, metadata={"skip": True})
     on_submit: Callable[[SessionDetailsForm], None] | None = field(
         default=None,
         metadata={"skip": True},
@@ -97,12 +106,14 @@ class SessionDetailsForm(ft.Column):
         Raises
         ------
         ValueError
-            If a running configuration is missing or mismatched, or strength has one.
+            If a running configuration is missing or mismatched, strength has
+            one, or the initial record belongs to another family.
 
         Notes
         -----
         Flet calls this hook during construction. Each new form owns fresh
-        controls; no previously entered measurements are reused.
+        controls. An initial record prefills stored measurements; ordinary
+        creation starts with empty measurements and zero zone durations.
         """
         if self.session_type.has_details:
             if self.configuration is None or self.configuration.session_type != self.session_type:
@@ -114,21 +125,29 @@ class SessionDetailsForm(ft.Column):
         self.spacing = 16
         self.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
         self.inputs: dict[str, SessionInput] = {}
+        self._initial_values: SessionDetailValues | None = None
         self.date_input: DateSelector = DateSelector()
         self.controls = [self.date_input]
         if self.configuration is not None:
             self._build_measurements(self.configuration)
+        editing = self.initial_session is not None
         self.submit_button: ft.Button = ft.Button(
-            content="Ajouter",
-            expand=1,
+            content="Enregistrer" if editing else "Ajouter",
+            expand=4 if editing else 1,
             on_click=self._submit,
         )
         self.controls.append(
             ft.Row(
                 spacing=0,
-                controls=[ft.Container(expand=1), self.submit_button, ft.Container(expand=1)],
+                controls=[
+                    ft.Container(expand=3 if editing else 1),
+                    self.submit_button,
+                    ft.Container(expand=3 if editing else 1),
+                ],
             )
         )
+        if self.initial_session is not None:
+            self.prefill(self.initial_session)
 
     def _add(self: Self, name: str, control: SessionInput) -> None:
         """Register a measurement control and append it in display order.
@@ -221,6 +240,68 @@ class SessionDetailsForm(ft.Column):
             self._add(f"mean_HR{suffix}", HeartRateInput(label="FC moyenne"))
             self._add(f"max_HR{suffix}", HeartRateInput(label="FC max"))
 
+    def prefill(self: Self, record: SessionRecord) -> None:
+        """Load stored values while retaining measurements absent from this form.
+
+        Parameters
+        ----------
+        record : SessionRecord
+            Record matching this form's family and running configuration.
+
+        Raises
+        ------
+        ValueError
+            If the record's measurement subtype or interval family does not
+            match this form's session type.
+
+        Notes
+        -----
+        The date is loaded for every family. Running values are retained in
+        a separate payload so hidden measurements survive editing. Visible
+        controls receive comments verbatim, canonical weather choices and
+        numeric values; zone durations become whole seconds. No callback,
+        validation or client update is emitted.
+        """
+        validate_session_type(record, self.session_type)
+        self.date_input.set_value(record.date)
+        if isinstance(record, StrengthSession):
+            return
+        self._initial_values = session_detail_values(record)
+        for name, control in self.inputs.items():
+            value = self._initial_values.get(name)
+            # Controls and stored value types are paired by the same field schema.
+            if isinstance(control, CommentsInput):
+                control.set_value(cast(str, value or ""))
+            elif isinstance(control, WeatherSelector):
+                choice = next((choice for choice in Weather if choice.label == value), None)
+                control.set_selected(choice)
+            elif isinstance(control, NumericInput):
+                if isinstance(value, timedelta):
+                    value = value.days * 86400 + value.seconds
+                control.set_value(cast(Decimal | float | int | None, value))
+
+    def edit_state(self: Self) -> SessionEditState:
+        """Snapshot editable values without changing text or validation state.
+
+        Returns
+        -------
+        SessionEditState
+            Selected date and an ordered tuple of storage-field names paired
+            with comparison values. Numeric inputs use normalized pending
+            values or an ``("invalid", raw_text)`` marker; comments and weather
+            use their current values.
+
+        Notes
+        -----
+        Reading raw numeric text detects edits before blur. Equivalent valid
+        number spellings compare equal, while invalid text remains detectable
+        without displaying validation errors or discarding the user's input.
+        """
+        return (self.date_input.selected, tuple(
+            (name, control.pending_value if isinstance(control, NumericInput) else control.value)
+            for name, control in self.inputs.items()
+        ))
+
     def read(self: Self) -> SessionDraft | None:
         """Validate the current text and build a persistence-ready session draft.
 
@@ -233,7 +314,8 @@ class SessionDetailsForm(ft.Column):
         -----
         Reading revalidates raw client text even when no blur event occurred.
         Requiredness and target types come from the repository schema. Hidden
-        fields and unused repetitions remain explicitly None. Zone durations
+        fields and unused repetitions remain explicitly None for creation;
+        editing preserves their stored values. Zone durations
         become timedeltas; interval speeds become floats; scaled measurements
         remain Decimal values. This method neither saves nor updates the page.
         """
@@ -241,8 +323,8 @@ class SessionDetailsForm(ft.Column):
             return SessionDraft(self.date_input.selected, self.session_type, None)
 
         schema = get_detail_fields(self.session_type)
-        # Hidden fields and unused repetitions must remain explicitly NULL.
-        values: SessionDetailValues = {
+        # New sessions clear hidden fields; edits retain their stored values.
+        values: SessionDetailValues = dict(self._initial_values) if self._initial_values is not None else {
             name: None for name, spec in schema.items() if not spec.required
         }
         values.update(self.configuration.detail_values)

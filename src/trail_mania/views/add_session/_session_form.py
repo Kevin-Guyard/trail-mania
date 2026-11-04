@@ -15,6 +15,7 @@ from trail_mania.components import (
     VO2maxFormatSelector,
 )
 from trail_mania.components.field_layout import field_label
+from trail_mania.session_records import IntervalSession, RecordedSession, SessionRecord, validate_session_type
 from trail_mania.session_types import (
     Movement,
     SessionFormat,
@@ -38,17 +39,26 @@ class SessionForm(ft.Column):
         Zero-argument callback requesting a return to the picker.
     on_submit : callable or None, optional
         Callback receiving the measurement form requesting submission.
+    initial_session : SessionRecord or None, optional
+        Stored record to edit. Prefills measurements and locks its configuration.
 
     Attributes
     ----------
     details_form : SessionDetailsForm or None
         Current measurements, or None until all required choices are complete.
 
+    Raises
+    ------
+    ValueError
+        If an initial record has measurements incompatible with the family.
+
     Notes
     -----
     Changing terrain resets slope, movement and format. Changing slope
     resets movement and format; changing movement resets format. Any
     choice change replaces the measurement form, discarding its inputs.
+    Supplying an initial record instead restores and locks its configuration;
+    its measurements are passed to the shared details form for editing.
     """
 
     session_type: SessionType = field(default=SessionType.LONG_RUN, metadata={"skip": True})
@@ -57,9 +67,15 @@ class SessionForm(ft.Column):
         default=None,
         metadata={"skip": True},
     )
+    initial_session: SessionRecord | None = field(default=None, metadata={"skip": True})
 
     def init(self: Self) -> None:
         """Build the header and initialize the session-specific form controls.
+
+        Raises
+        ------
+        ValueError
+            If the supplied initial record does not match the session family.
 
         Notes
         -----
@@ -68,6 +84,8 @@ class SessionForm(ft.Column):
         """
         self.scroll = ft.ScrollMode.AUTO
         self.horizontal_alignment = ft.CrossAxisAlignment.STRETCH
+        if self.initial_session is not None:
+            validate_session_type(self.initial_session, self.session_type)
         self.details_form: SessionDetailsForm | None = None
         self.controls = [self._build_header()]
         if self.session_type.has_details:
@@ -76,9 +94,41 @@ class SessionForm(ft.Column):
         else:
             self.details_form = SessionDetailsForm(
                 session_type=self.session_type,
+                initial_session=self.initial_session,
                 on_submit=self.on_submit,
             )
             self.controls.append(self.details_form)
+        if self.initial_session is not None:
+            self._prefill(self.initial_session)
+
+    def _prefill(self: Self, record: SessionRecord) -> None:
+        """Restore a running record's configuration and lock its selectors.
+
+        Parameters
+        ----------
+        record : SessionRecord
+            Initial record already checked against this form's family.
+
+        Notes
+        -----
+        Running records rebuild the measurement form only after all location
+        and format choices are selected. Strength records need no selectors
+        and are already prefilled during their details-form construction.
+        No callback or client update is emitted.
+        """
+        if isinstance(record, RecordedSession):
+            terrain = next(choice for choice in Terrain if choice.label == record.terrain)
+            slope = next(choice for choice in Slope if choice.label == record.slope)
+            movement = next((choice for choice in Movement if choice.label == record.movement), None)
+            self.terrain_selector.set_selected(terrain)
+            self.slope_selector.set_selected(slope)
+            self.movement_selector.set_selected(movement)
+            if self.format_selector is not None and isinstance(record, IntervalSession):
+                self.format_selector.set_selected(record.session_format)
+            self._refresh_details()
+            for selector in (self.terrain_selector, self.slope_selector, self.movement_selector, self.format_selector):
+                if selector is not None:
+                    selector.lock()
 
     def _build_header(self: Self) -> ft.Row:
         """Build the back button and session title.
@@ -187,6 +237,7 @@ class SessionForm(ft.Column):
             self.details_form = SessionDetailsForm(
                 session_type=self.session_type,
                 configuration=configuration,
+                initial_session=self.initial_session,
                 on_submit=self.on_submit,
             )
         self._details_container.content = self.details_form
@@ -245,6 +296,9 @@ class SessionForm(ft.Column):
         The changed selector has already synchronized its client selection
         before this method runs, allowing resets to appear in Flet patches.
         """
+        if self.initial_session is not None:
+            # Disabled selectors may still receive changes queued before navigation.
+            return
         for selector in selectors:
             if selector is not None:
                 selector.reset()

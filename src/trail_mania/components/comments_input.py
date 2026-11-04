@@ -66,3 +66,18 @@ class CommentsInput(ft.Container):
             Current text, including line breaks, or an empty string.
         """
         return self._field.value
+
+    def set_value(self: Self, value: str) -> None:
+        """Prefill the complete comment without emitting an update.
+
+        Parameters
+        ----------
+        value : str
+            Stored text, including line breaks or an empty comment.
+
+        Notes
+        -----
+        The text is assigned verbatim without trimming, validation or a
+        change callback. The parent sends any necessary client update.
+        """
+        self._field.value = value

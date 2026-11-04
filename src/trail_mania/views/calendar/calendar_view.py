@@ -1,11 +1,14 @@
+"""Render calendar periods and host the shared session-detail lifecycle."""
+
 from calendar import MONDAY, Calendar
 from collections.abc import Callable
 from datetime import date, timedelta
-from typing import Final, Self
+from functools import partial
+from typing import Final, Literal, Self
 
 import flet as ft
 
-from trail_mania.session_repository import get_calendar_sessions_by_date, get_session_types_by_date
+from trail_mania.session_repository import CalendarSession, get_calendar_sessions_by_date
 from trail_mania.views.calendar._calendar_cells import (
     CELL_SPACING,
     WEEKDAY_NAMES,
@@ -14,6 +17,7 @@ from trail_mania.views.calendar._calendar_cells import (
     build_weekday_text,
 )
 from trail_mania.views.calendar._calendar_pager import CalendarPager
+from trail_mania.views.sessions._session_navigation import SessionNavigation
 
 
 _MONTH_NAMES: Final[tuple[str, ...]] = (
@@ -41,6 +45,8 @@ class CalendarView(ft.Container):
     -----
     Both periods initially contain today's date. Switching views preserves
     their selected periods. Headers stay fixed while calendar grids slide.
+    Opening a session detail deactivates the pager and defers refreshes until
+    returning, preserving the selected period and any pending session edits.
     """
 
     def init(self: Self) -> None:
@@ -60,17 +66,82 @@ class CalendarView(ft.Container):
         week_year, week, _ = today.isocalendar()
         self.selected_week: Period = (week_year, week)
         self._pager: CalendarPager | None = None
-        self._mode = "month"
+        self._mode: Literal["month", "week"] = "month"
 
         self._period_content: ft.Container = ft.Container(
             expand=True,
             alignment=ft.Alignment.TOP_CENTER,
             content=self._build_month_view(),
         )
-        self.content = ft.Column(
+        self._calendar_content: ft.Column = ft.Column(
             horizontal_alignment=ft.CrossAxisAlignment.CENTER,
             controls=[self._build_selector(), self._period_content],
         )
+        self.content = self._calendar_content
+
+    def _session_action(self: Self, session: CalendarSession) -> Callable[[], None] | None:
+        """Bind a calendar band to its own record, including duplicate types.
+
+        Parameters
+        ----------
+        session : CalendarSession
+            Projected session represented by the band.
+
+        Returns
+        -------
+        callable or None
+            Zero-argument detail action bound to this projection, or None when
+            no record is available because running details are missing.
+        """
+        return partial(self._open_detail, session) if session.record is not None else None
+
+    def _open_detail(self: Self, session: CalendarSession) -> None:
+        """Open a recorded session while preserving the calendar's origin.
+
+        Parameters
+        ----------
+        session : CalendarSession
+            Band projection containing a compatible family and record.
+
+        Notes
+        -----
+        Missing records and events received while the calendar is hidden
+        are ignored. The current pager is deactivated before shared detail
+        navigation starts, preventing delayed swipe events from changing it.
+        """
+        if session.record is None or self.content is not self._calendar_content:
+            return
+        if self._pager is not None:
+            self._pager.deactivate()
+        SessionNavigation(
+            session=session.record, session_type=session.session_type,
+            show=self._show_session, on_back=lambda changed: self._back_to_calendar(),
+            back_tooltip="Retour au calendrier",
+        ).open()
+
+    def _show_session(self: Self, control: ft.Control) -> None:
+        """Display a session screen supplied by the shared navigation lifecycle.
+
+        Parameters
+        ----------
+        control : ft.Control
+            Fresh detail or editor control to install before updating the view.
+        """
+        self.content = control
+        self.update()
+
+    def _back_to_calendar(self: Self) -> None:
+        """Restore the selected calendar mode and period with a fresh pager.
+
+        Notes
+        -----
+        The calendar becomes active before refresh so deferred queries run.
+        Every return reloads the period, including changes made from another
+        tab while the session was open. The enclosing view is then updated.
+        """
+        self.content = self._calendar_content
+        self.refresh()
+        self.update()
 
     def _build_selector(self: Self) -> ft.Row:
         """Build the centered month/week selector.
@@ -290,7 +361,7 @@ class CalendarView(ft.Container):
             Unused week slots remain transparent below the grid.
         """
         weeks = Calendar(firstweekday=MONDAY).monthdatescalendar(*period)
-        sessions = get_session_types_by_date(weeks[0][0], weeks[-1][-1])
+        sessions = get_calendar_sessions_by_date(weeks[0][0], weeks[-1][-1])
         today = date.today()
         rows: list[ft.Control] = [
             ft.Row(
@@ -298,7 +369,11 @@ class CalendarView(ft.Container):
                 spacing=CELL_SPACING,
                 vertical_alignment=ft.CrossAxisAlignment.STRETCH,
                 controls=[
-                    build_month_cell(day, today, period, sessions.get(day, ()))
+                    build_month_cell(
+                        day, today, period,
+                        [s.session_type for s in sessions.get(day, ())],
+                        [self._session_action(s) for s in sessions.get(day, ())],
+                    )
                     for day in week
                 ],
             )
@@ -367,6 +442,7 @@ class CalendarView(ft.Container):
                     monday + timedelta(days=offset), today, weekday,
                     [s.session_type for s in sessions.get(monday + timedelta(days=offset), ())],
                     [s.description for s in sessions.get(monday + timedelta(days=offset), ())],
+                    [self._session_action(s) for s in sessions.get(monday + timedelta(days=offset), ())],
                 )
                 for offset, weekday in enumerate(WEEKDAY_NAMES)
             ],
@@ -444,7 +520,17 @@ class CalendarView(ft.Container):
         self.update()
 
     def refresh(self: Self) -> None:
-        """Reload sessions and preserve the view; the caller updates the page."""
+        """Reload the visible calendar while preserving its mode and period.
+
+        Notes
+        -----
+        Detail and edit screens defer this work until returning to the
+        calendar, keeping their current inputs and the deactivated pager
+        intact. A visible calendar receives a fresh period view and pager;
+        the caller sends the client update.
+        """
+        if self.content is not self._calendar_content:
+            return
         self._period_content.content = (
             self._build_month_view()
             if self._mode == "month"

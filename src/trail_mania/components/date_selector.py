@@ -93,8 +93,8 @@ class DateSelector(ft.Container):
         value = event.control.value
         if value is None:
             return
-        # Flet returns UTC instants. Recover the selected local day first,
-        # since local midnight can fall on the previous day in UTC.
+        # Convert aware instants before dropping the time: local midnight
+        # can be represented by the previous day in UTC.
         if isinstance(value, datetime):
             value = value.astimezone().date() if value.tzinfo is not None else value.date()
         if value > date.today():
@@ -111,6 +111,22 @@ class DateSelector(ft.Container):
         Returns
         -------
         datetime.date
-            Current valid date, initially the construction day's local date.
+            Current calendar date, initially the construction day's local date.
         """
         return self._selected_date
+
+    def set_value(self: Self, value: date) -> None:
+        """Prefill a stored calendar date without emitting an update.
+
+        Parameters
+        ----------
+        value : datetime.date
+            Persisted calendar day to display in day/month/year format.
+
+        Notes
+        -----
+        This setter trusts the stored date and does not apply the picker's
+        future-date check. No callback or client update is emitted.
+        """
+        self._selected_date = value
+        self._date_text.value = value.strftime("%d/%m/%Y")

@@ -1,6 +1,6 @@
 """Immutable session measurements, independent of storage and UI controls."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
 from functools import cached_property
@@ -13,6 +13,29 @@ from trail_mania.session_types import (
     Terrain,
     session_format_from_speeds,
 )
+
+
+@dataclass(frozen=True)
+class StrengthSession:
+    """Store a strength date and its optional persistent identity.
+
+    Parameters
+    ----------
+    date : datetime.date
+        Local calendar date without a time or timezone.
+    session_id : int or None, optional
+        Keyword-only persistent identity used for editing and deletion.
+        Defaults to None for records not loaded from storage.
+
+    Notes
+    -----
+    The record is immutable and retains no ORM or UI objects. Identity is
+    excluded from measurement comparisons, so equal dates may still belong
+    to different persisted sessions.
+    """
+
+    date: date
+    session_id: int | None = field(default=None, kw_only=True, compare=False)
 
 
 @dataclass(frozen=True)
@@ -44,6 +67,9 @@ class RecordedSession:
         Rating of perceived exertion; defaults to None.
     comment : str, optional
         Free-text session comment; defaults to an empty string.
+    session_id : int or None, optional
+        Keyword-only persistent identity used for editing and deletion. Excluded from
+        measurement comparisons; None for records not loaded from storage.
 
     Notes
     -----
@@ -67,6 +93,7 @@ class RecordedSession:
     z5: timedelta = timedelta(0)
     rpe: Decimal | None = None
     comment: str = ""
+    session_id: int | None = field(default=None, kw_only=True, compare=False)
 
     @property
     def requires_movement(self: Self) -> bool:
@@ -194,3 +221,39 @@ class IntervalSession(RecordedSession):
         immutable record and uses the same rule as the calendar descriptions.
         """
         return session_format_from_speeds(self.session_type, self.velocity_on, self.velocity_off)
+
+
+type RunningSession = EnduranceSession | IntervalSession
+type SessionRecord = RunningSession | StrengthSession
+
+
+def validate_session_type(session: RecordedSession | StrengthSession, session_type: SessionType) -> None:
+    """Check that a record's measurement shape matches its session family.
+
+    Parameters
+    ----------
+    session : RecordedSession or StrengthSession
+        Record whose concrete subtype should be checked.
+    session_type : SessionType
+        Family requested by the form or detail view.
+
+    Raises
+    ------
+    ValueError
+        If strength or endurance measurements have an incompatible subtype,
+        or an interval record carries a different interval family.
+
+    Notes
+    -----
+    Endurance families share one measurement shape and are not distinguished
+    within EnduranceSession. This function checks compatibility only; it
+    does not validate individual measurements or access storage.
+    """
+    if session_type == SessionType.LEG_STRENGTH:
+        matches = isinstance(session, StrengthSession)
+    elif session_type.has_format:
+        matches = isinstance(session, IntervalSession) and session.session_type == session_type
+    else:
+        matches = isinstance(session, EnduranceSession)
+    if not matches:
+        raise ValueError("Session measurements do not match the session type")

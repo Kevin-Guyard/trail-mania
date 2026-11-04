@@ -1,7 +1,7 @@
 import unittest
 from calendar import MONDAY, Calendar
 from datetime import date, timedelta
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import flet as ft
 
@@ -9,6 +9,8 @@ from trail_mania.views.calendar import calendar_view
 from trail_mania.session_colors import SESSION_COLORS
 from trail_mania.session_types import SessionType
 from trail_mania.session_repository import CalendarSession
+from trail_mania.session_records import EnduranceSession, IntervalSession, StrengthSession
+from trail_mania.views.sessions.session_detail_view import SessionDetailView
 
 
 class FixedDate(date):
@@ -30,9 +32,7 @@ class CalendarViewTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch.object(calendar_view, "date", FixedDate))
         self.updates = self.enterContext(patch.object(ft.Control, "update", autospec=True))
-        self.session_reader = self.enterContext(patch.object(
-            calendar_view, "get_session_types_by_date", return_value={},
-        ))
+        self.session_reader = Mock(return_value={})
         self.week_session_reader = self.enterContext(patch.object(
             calendar_view, "get_calendar_sessions_by_date",
             side_effect=lambda start, end: {
@@ -48,6 +48,25 @@ class CalendarViewTests(unittest.TestCase):
             control for control in walk_controls(self.view)
             if isinstance(control, ft.SegmentedButton)
         )
+
+    def test_refresh_in_detail_defers_calendar_queries_and_keeps_pager_inactive(self):
+        record = EnduranceSession(FixedDate.today(), "Route", "Sans pente", None)
+        session = CalendarSession(SessionType.EASY_RUN, record=record)
+        pager = self.view._pager
+        self.view._open_detail(session)
+        detail = self.view.content
+        self.week_session_reader.reset_mock()
+        self.view.refresh()
+        self.week_session_reader.assert_not_called()
+        self.assertIs(self.view.content, detail)
+        self.assertIs(self.view._pager, pager)
+        self.assertFalse(pager._active)
+        self.view._open_detail(session)  # Ignore a delayed click on the calendar band.
+        self.assertIs(self.view.content, detail)
+        detail.controls[0].controls[0].on_click(None)
+        self.week_session_reader.assert_called()
+        self.assertIsNot(self.view._pager, pager)
+        self.assertTrue(self.view._pager._active)
 
     def select(self, mode, period=None):
         if period is not None:
@@ -132,6 +151,89 @@ class CalendarViewTests(unittest.TestCase):
         self.assertFalse(self.selector().show_selected_icon)
         self.assertEqual(self.view.padding, 16)
         self.assertTrue(self.view.expand)
+
+    def test_endurance_bands_open_their_own_detail_in_both_calendars(self):
+        day = date(2026, 11, 16)
+        records = [
+            CalendarSession(session_type, "Route - Sans pente", EnduranceSession(
+                day, "Route", "Sans pente", None, comment=f"Séance {index}",
+            ))
+            for index, session_type in enumerate((
+                SessionType.EASY_RUN, SessionType.STEADY_RUN, SessionType.LONG_RUN,
+                SessionType.EASY_RUN,
+            ))
+        ]
+        self.week_session_reader.side_effect = lambda start, end: {day: records} if start <= day <= end else {}
+        records.append(CalendarSession(SessionType.THRESHOLD, "Route - Sans pente - x1",
+                                       IntervalSession(day, "Route", "Sans pente", None)))
+        records.append(CalendarSession(SessionType.VO2MAX, "Route - Sans pente - x4",
+                                       IntervalSession(day, "Route", "Sans pente", None, session_type=SessionType.VO2MAX)))
+        for mode in ("month", "week"):
+            for index, session in enumerate(records):
+                with self.subTest(mode=mode, index=index):
+                    self.select(mode)
+                    original_month, original_week = self.view.selected_month, self.view.selected_week
+                    cell = next(c for c in self.cells(self.grid()) if c.tooltip == "16/11/2026")
+                    band = cell.content.controls[0].content.controls[index * 2]
+                    old_pager = self.view._pager
+                    band.on_click(ft.Event("click", band))
+                    self.assertIsInstance(self.view.content, SessionDetailView)
+                    self.assertIs(self.view.content.session, session.record)
+                    self.assertEqual(self.view.content.session_type, session.session_type)
+                    back_button = self.view.content.controls[0].controls[0]
+                    self.assertEqual(back_button.icon, ft.Icons.ARROW_BACK)
+                    self.assertEqual(back_button.tooltip, "Retour au calendrier")
+                    self.assertFalse(old_pager._active)
+                    self.view.content.controls[0].controls[0].on_click(None)
+                    self.assertIs(self.view.content, self.view._calendar_content)
+                    self.assertEqual(self.selector().selected, [mode])
+                    self.assertEqual((self.view.selected_month, self.view.selected_week),
+                                     (original_month, original_week))
+                    self.assertIsNot(self.view._pager, old_pager)
+
+    def test_single_session_background_opens_each_session_family(self):
+        day = date(2026, 11, 16)
+        for session_type in SessionType:
+            record = (
+                StrengthSession(day) if session_type == SessionType.LEG_STRENGTH
+                else IntervalSession(day, "Route", "Sans pente", None, session_type=session_type) if session_type.has_format
+                else EnduranceSession(day, "Route", "Sans pente", None)
+            )
+            session = CalendarSession(session_type, "", record)
+            self.week_session_reader.side_effect = lambda start, end: {day: [session]} if start <= day <= end else {}
+            for mode in ("month", "week"):
+                with self.subTest(mode=mode, session_type=session_type):
+                    self.select(mode)
+                    cell = next(c for c in self.cells(self.grid()) if c.tooltip == "16/11/2026")
+                    background = cell.content.controls[0]
+                    self.assertIsNotNone(background.on_click)
+                    background.on_click(ft.Event("click", background))
+                    self.assertIs(self.view.content.session, record)
+                    self.view._back_to_calendar()
+
+    def test_week_day_and_date_overlays_let_clicks_reach_session_bands(self):
+        day = date(2026, 11, 16)
+        session = CalendarSession(
+            SessionType.EASY_RUN, "Route - Sans pente",
+            EnduranceSession(day, "Route", "Sans pente", None),
+        )
+        for count in (1, 2):
+            with self.subTest(sessions=count):
+                self.week_session_reader.side_effect = (
+                    lambda start, end: {day: [session] * count} if start <= day <= end else {}
+                )
+                self.select("week")
+                cell = next(c for c in self.cells(self.grid()) if c.tooltip == "16/11/2026")
+                background, date_label, weekday_label = cell.content.controls
+                self.assertTrue(date_label.ignore_interactions)
+                self.assertTrue(weekday_label.ignore_interactions)
+                self.assertFalse(background.ignore_interactions)
+                target = background if count == 1 else background.content.controls[2]
+                self.assertFalse(target.ignore_interactions)
+                target.on_click(ft.Event("click", target))
+                self.assertIs(self.view.content.session, session.record)
+                self.view.content.controls[0].controls[0].on_click(None)
+                self.assertEqual(self.selector().selected, ["week"])
 
     def test_recorded_session_colors_in_both_views(self):
         for session_type, color in SESSION_COLORS.items():
@@ -234,13 +336,13 @@ class CalendarViewTests(unittest.TestCase):
         ))
 
     def test_queries_include_adjacent_month_days_and_prepared_pages(self):
-        self.session_reader.reset_mock()
+        self.week_session_reader.reset_mock()
         self.select("month", (2026, 11))
         self.assertEqual(
-            self.session_reader.call_args_list[1].args,
+            self.week_session_reader.call_args_list[1].args,
             (date(2026, 10, 26), date(2026, 12, 6)),
         )
-        self.assertEqual(self.session_reader.call_count, 3)
+        self.assertEqual(self.week_session_reader.call_count, 3)
         self.week_session_reader.reset_mock()
         self.select("week", (2026, 53))
         self.assertEqual(

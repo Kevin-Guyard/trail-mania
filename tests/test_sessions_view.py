@@ -421,17 +421,12 @@ class EnduranceSessionsTests(unittest.TestCase):
         self.assertFalse(self.filters.movement_field.visible)
         self.assertEqual(len(self.rows()), 1)
 
-    def test_back_discards_the_table_and_other_types_keep_their_header(self):
+    def test_back_discards_the_table(self):
         self.view.content.controls[0].controls[0].on_click(None)
         self.assertIsNone(self.view._session_list)
         self.assertIs(self.view.content, self.view._session_choices)
         self.view.refresh()
         self.reader.assert_called_once()
-        for session_type in SessionType:
-            if not session_type.has_details:
-                self.view._open_session(session_type)
-                self.assertEqual(len(self.view.content.controls), 1)
-                self.assertIsNone(self.view._session_list)
 
 
 class LongRunSessionsTests(EnduranceSessionsTests):

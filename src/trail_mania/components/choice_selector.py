@@ -163,6 +163,38 @@ class ChoiceSelector(ft.Container):
         self._selector.allow_empty_selection = True
         self._selector.selected = []
 
+    def set_selected(self: Self, value: str | None) -> None:
+        """Prefill a stable choice key without triggering dependent resets.
+
+        Parameters
+        ----------
+        value : str or None
+            Key of an available segment, or None to clear the selection.
+
+        Notes
+        -----
+        A populated selection prevents the client from clearing it. No
+        callback, dependent reset or client update is emitted by this method.
+        """
+        self._selector.selected = [value] if value is not None else []
+        self._selector.allow_empty_selection = value is None
+
+    def lock(self: Self) -> None:
+        """Display the stored configuration as a disabled, muted choice.
+
+        Notes
+        -----
+        The current selection is retained, opacity is reduced and segment
+        backgrounds become gray. The parent sends any necessary update.
+        Owning forms must still reject delayed selector events when editing.
+        """
+        self.disabled = True
+        self.opacity = 0.5
+        self._selector.style.bgcolor = {
+            ft.ControlState.SELECTED: ft.Colors.GREY_300,
+            ft.ControlState.DEFAULT: ft.Colors.GREY_100,
+        }
+
     @property
     def selected(self: Self) -> str | None:
         """Return the stable key selected by the client.
