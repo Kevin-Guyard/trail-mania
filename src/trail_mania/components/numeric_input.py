@@ -470,13 +470,18 @@ class InclinationInput(NumericInput):
     Notes
     -----
     Uses half-percentage-point steps and one decimal place, with a lower
-    bound of zero and an upper bound of 99.5 percent.
+    bound of zero and an upper bound of 99.5 percent. Starts at zero.
     """
 
     label: str = "Inclinaison"
     unit: str = "%"
     step: Decimal = field(default=Decimal("0.5"), metadata={"skip": True})
     maximum: Decimal | None = field(default=Decimal("99.5"), metadata={"skip": True})
+
+    def init(self: Self) -> None:
+        """Initialize the stepper with zero inclination."""
+        super().init()
+        self.set_value(Decimal("0"))
 
 
 @ft.control
@@ -486,10 +491,15 @@ class ElevationInput(NumericInput):
     Notes
     -----
     Uses steps of one meter and no decimal places. Persistence converts
-    the normalized Decimal value to int.
+    the normalized Decimal value to int. Starts at zero.
     """
 
     label: str = "Dénivelé"
     unit: str = "m"
     decimals: int = 0
     step: Decimal = field(default=Decimal("1"), metadata={"skip": True})
+
+    def init(self: Self) -> None:
+        """Initialize the stepper with zero elevation gain."""
+        super().init()
+        self.set_value(Decimal("0"))

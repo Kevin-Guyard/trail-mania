@@ -184,6 +184,33 @@ class SessionSubmissionTests(unittest.TestCase):
                                             self.assertEqual(getattr(detail, f"velocity_OFF_{index}"), 8 + index + .2 if index < repetitions else None)
         self.assertEqual(count, 72)
 
+    def test_default_elevation_and_inclination_are_saved_only_when_applicable(self):
+        for title, session_format, _ in VARIANTS:
+            for terrain, slope, movement in (
+                ("road", "flat", None),
+                ("treadmill", "flat", None),
+                ("treadmill", "hilly", "run"),
+            ):
+                with self.subTest(title=title, format=session_format, terrain=terrain, slope=slope):
+                    form = self.make_form(title, session_format, terrain, slope, movement)
+                    defaults = {
+                        name: control._field.value for name, control in form.inputs.items()
+                        if name in ("elevation_gain", "inclination")
+                    }
+                    self.fill_form(form)
+                    for name, text in defaults.items():
+                        form.inputs[name]._field.value = text
+                    self.click(form)
+                    with DatabaseSession(self.engine) as db:
+                        detail = db.scalars(select(DETAIL_MODELS[title]).order_by(
+                            DETAIL_MODELS[title].id.desc(),
+                        )).first()
+                        self.assertEqual(detail.elevation_gain, 0 if terrain == "road" else None)
+                        self.assertEqual(
+                            detail.inclination,
+                            Decimal("0.0") if terrain == "treadmill" and slope == "hilly" else None,
+                        )
+
     def test_muscu_button_creates_only_parent_and_ignores_duplicate_click(self):
         self.view._open_session("Muscu jambes")
         form = self.view.content.details_form

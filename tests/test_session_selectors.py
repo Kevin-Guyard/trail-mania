@@ -399,7 +399,9 @@ class SessionSelectorsTest(unittest.TestCase):
                         c for c in secondary.content.controls
                         if isinstance(c, NumericInput) and not isinstance(c, ZoneDurationInput)
                     ]
-                    self.assertTrue(all(c.value is None for c in numeric_fields))
+                    for control in numeric_fields:
+                        expected_default = Decimal("0") if isinstance(control, (ElevationInput, InclinationInput)) else None
+                        self.assertEqual(control.value, expected_default)
                     # Each phase has independent duration and speed values.
                     with patch.object(NumericInput, "update"):
                         expected = [

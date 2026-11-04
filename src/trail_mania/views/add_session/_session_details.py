@@ -113,7 +113,8 @@ class SessionDetailsForm(ft.Column):
         -----
         Flet calls this hook during construction. Each new form owns fresh
         controls. An initial record prefills stored measurements; ordinary
-        creation starts with empty measurements and zero zone durations.
+        creation starts with zero elevation, inclination and zone durations;
+        other measurements start empty.
         """
         if self.session_type.has_details:
             if self.configuration is None or self.configuration.session_type != self.session_type:

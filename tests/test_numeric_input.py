@@ -30,12 +30,16 @@ class NumericInputTest(unittest.TestCase):
         with patch.object(NumericInput, "update"):
             button.on_tap(SimpleNamespace(control=button))
 
-    def test_components_start_empty_and_can_be_sent_to_flet(self):
+    def test_component_defaults_and_flet_serialization(self):
         for cls in self.classes:
             with self.subTest(component=cls.__name__):
                 component = cls()
-                self.assertIsNone(component.value)
-                self.assertEqual(component._field.value, "")
+                if cls in (InclinationInput, ElevationInput):
+                    self.assertEqual(component.value, Decimal("0"))
+                    self.assertEqual(component._field.value, "0" if cls is ElevationInput else "0,0")
+                else:
+                    self.assertIsNone(component.value)
+                    self.assertEqual(component._field.value, "")
                 self.assertEqual(component._field.keyboard_type, ft.KeyboardType.NUMBER)
                 # Les paramètres Decimal restent côté Python, hors protocole UI.
                 msgpack.packb(
